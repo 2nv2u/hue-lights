@@ -147,15 +147,18 @@ var Prefs = class HuePrefs {
      * @method getPrefsWidget
      * @return {Object} the widget itself
      */
-    getPrefsWidget() {
+    getPrefsWidget(selectPage = 0) {
 
         let children = this._prefsWidget.get_children();
         for (let child in children) {
             children[child].destroy();
         }
 
-        this._prefsWidget.add(this._buildWidget());
+        let notebookWidget = this._buildWidget();
+        this._prefsWidget.add(notebookWidget);
         this._prefsWidget.show_all();
+
+        notebookWidget.set_current_page(selectPage);
 
         return this._prefsWidget;
     }
@@ -183,6 +186,13 @@ var Prefs = class HuePrefs {
         notebook.append_page(
             pageGeneral,
             new Gtk.Label({label: _("General settings")})
+        );
+
+        let pageEvents = this._buildEventsWidget();
+        pageEvents.border_width = 10;
+        notebook.append_page(
+            pageEvents,
+            new Gtk.Label({label: _("Events settings")})
         );
 
         let pageAdvanced = this._buildAdvancedWidget();
@@ -642,6 +652,171 @@ var Prefs = class HuePrefs {
     }
 
     /**
+     * Create the widget with events settings.
+     *
+     * @method _buildEventsWidget
+     * @private
+     * @return {Object} the widget with events settings
+     */
+    _buildEventsWidget() {
+
+        let top = 1;
+        let lightID;
+        let allLights = {};
+
+        let eventsWidget = new Gtk.Grid(
+            {
+                hexpand: true,
+                vexpand: true,
+                halign:Gtk.Align.CENTER,
+                valign:Gtk.Align.CENTER
+            }
+        );
+
+        for (let bridgeid in this._hue.instances) {
+            if (this._hue.data[bridgeid] === undefined ||
+                this._hue.data[bridgeid]["groups"] === undefined) {
+                continue;
+            }
+
+            for (let groupid in this._hue.data[bridgeid]["groups"]) {
+                if (this._hue.data[bridgeid]["groups"][groupid]["type"] !== "Room") {
+                    continue;
+                }
+
+                for (let l in this._hue.data[bridgeid]["groups"][groupid]["lights"]) {
+                    let lightid = parseInt(this._hue.data[bridgeid]["groups"][groupid]["lights"][l]);
+
+                    lightID = `${bridgeid}::${lightid}`;
+                    allLights[lightID] = this._hue.bridges[bridgeid]["name"];
+                    allLights[lightID] += ` - ${this._hue.data[bridgeid]["groups"][groupid]["name"]}`;
+                    allLights[lightID] += ` - ${this._hue.data[bridgeid]["lights"][lightid]["name"]}`;
+                }
+            }
+        }
+
+        for (let eventID in this._notifyLights) {
+            let lightComboBox = new Gtk.ComboBoxText();
+
+            let parsedEventID = eventID.split("::");
+
+            let event = Utils.HUELIGHTS_EVENT_ACTION_DEFAULT;
+            if (parsedEventID[2] !== undefined) {
+                event = parsedEventID[2];
+            }
+
+            lightID = `${parsedEventID[0]}::${parsedEventID[1]}`;
+
+            let counter = 0;
+            for (let i in allLights) {
+                lightComboBox.append_text(allLights[i]);
+                if (lightID === i) {
+                    lightComboBox.set_active(counter);
+                }
+
+                counter++;
+            }
+
+            lightComboBox.connect(
+                "changed",
+                this._widgetEventHandler.bind(
+                    this,
+                    {"event": "light-event-changed", "object": lightComboBox, "previous_eventID": eventID, "alllights": allLights}
+                )
+            )
+
+            eventsWidget.attach(lightComboBox, 1, top, 1, 1);
+
+            if (eventID === "none") {
+                continue;
+            }
+
+            let adj = new Gtk.Adjustment({value : 1.0, lower: 0, upper: 254, step_increment : 1, page_increment : 20, page_size : 0});
+            let brightnessEventWidget = new Gtk.ScaleButton({
+                label: _("Brightness"),
+                adjustment : adj
+            });
+
+            let briVal = 254;
+            if (this._notifyLights[eventID]["bri"] !== undefined) {
+                briVal = this._notifyLights[eventID]["bri"];
+            }
+            brightnessEventWidget.value = briVal;
+
+            eventsWidget.attach_next_to(brightnessEventWidget, lightComboBox, Gtk.PositionType.RIGHT, 1, 1);
+
+            let colorButtonEventWidget = new Gtk.ColorButton();
+            let eventLightColor = new Gdk.RGBA();
+
+            eventLightColor.red = 1.0;
+            eventLightColor.green = 1.0;
+            eventLightColor.blue = 1.0;
+            eventLightColor.alpha = 1.0;
+            if (this._notifyLights[eventID]["r"] !== undefined) {
+                eventLightColor.red = this._notifyLights[eventID]["r"] / 255;
+                eventLightColor.green = this._notifyLights[eventID]["g"] / 255;
+                eventLightColor.blue = this._notifyLights[eventID]["b"] / 255;
+            }
+            colorButtonEventWidget.set_rgba(eventLightColor);
+
+            eventsWidget.attach_next_to(colorButtonEventWidget, brightnessEventWidget, Gtk.PositionType.RIGHT, 1, 1);
+
+            let eventComboBox = new Gtk.ComboBoxText();
+            eventComboBox.append_text(_("on notication"));
+            eventComboBox.append_text(_("on enable"));
+            eventComboBox.append_text(_("on disable"));
+            eventComboBox.set_active(event);
+
+            eventComboBox.connect(
+                "changed",
+                this._widgetEventHandler.bind(
+                    this,
+                    {"event": "event-event-changed", "object": eventComboBox, "previous_eventID": eventID}
+                )
+            )
+
+            eventsWidget.attach_next_to(eventComboBox, colorButtonEventWidget, Gtk.PositionType.RIGHT, 1, 1);
+
+
+            let eventAction = Utils.HUELIGHTS_EVENT_ACTION_DEFAULT;
+            if (this._notifyLights[eventID]["action"] !== undefined) {
+                eventAction = this._notifyLights[eventID]["action"];
+            }
+
+            let eventActionComboBox = new Gtk.ComboBoxText();
+            eventActionComboBox.append_text(_("blink"));
+            eventActionComboBox.append_text(_("turn on"));
+            eventActionComboBox.append_text(_("turn off"));
+            eventActionComboBox.set_active(eventAction);
+
+            eventsWidget.attach_next_to(eventActionComboBox, eventComboBox, Gtk.PositionType.RIGHT, 1, 1);
+
+            let removeWidget = new Gtk.Button({label: _("Remove")});
+
+            eventsWidget.attach_next_to(removeWidget, eventActionComboBox, Gtk.PositionType.RIGHT, 1, 1);
+
+            top++;
+        }
+
+        if ("none" in this._notifyLights) {
+            return eventsWidget;
+        }
+
+        let addWidget = new Gtk.Button({label: _("Add")});
+        addWidget.connect(
+            "clicked",
+            this._widgetEventHandler.bind(
+                this,
+                {"event": "add-event"}
+            )
+        );
+
+        eventsWidget.attach(addWidget, 1, top, 6, 1);
+
+        return eventsWidget;
+    }
+
+    /**
      * Create the widget with advanced settings.
      *
      * @method _buildAdvancedWidget
@@ -950,6 +1125,54 @@ var Prefs = class HuePrefs {
                 }
 
                 this.writeNotifyLightsSettings();
+                break;
+
+            case "add-event":
+                this._notifyLights["none"] = {};
+                this.getPrefsWidget(2);
+                break;
+
+            case "light-event-changed":
+                let n = data["object"].get_active();
+                let eventID = "";
+                let counter = 0;
+                for (let i in data["alllights"]) {
+                    if (counter === n) {
+                        eventID = i;
+                        break;
+                    }
+                    counter++;
+                }
+
+                let event = Utils.HUELIGHTS_EVENT_DEFAULT;
+                if (this._notifyLights[data["previous_eventID"]]["event"] !== undefined) {
+                    event = this._notifyLights[data["previous_eventID"]]["event"];
+
+                    eventID = `${eventID}::${event}`
+                }
+
+                this._notifyLights[eventID] = this._notifyLights[data["previous_eventID"]];
+
+                delete this._notifyLights[data["previous_eventID"]];
+
+                this.writeNotifyLightsSettings();
+                this.getPrefsWidget(2);
+                break;
+
+            case "event-event-changed":
+                let activeEvent = data["object"].get_active();
+
+                this._notifyLights[data["previous_eventID"]]["event"] = activeEvent;
+
+                let parsedEventID = data["previous_eventID"].split("::");
+
+                if (data["previous_eventID"] !== `${parsedEventID[0]}::${parsedEventID[1]}::${activeEvent}`) {
+                    this._notifyLights[`${parsedEventID[0]}::${parsedEventID[1]}::${activeEvent}`] = this._notifyLights[data["previous_eventID"]];
+                    delete this._notifyLights[data["previous_eventID"]];
+                }
+
+                this.writeNotifyLightsSettings();
+                this.getPrefsWidget(2);
                 break;
 
             case undefined:
