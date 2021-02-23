@@ -92,6 +92,7 @@ var PhueMenu = GObject.registerClass({
         this.refreshMenuObjects = {};
         this.oldNotifylight = {};
         this.bridgeInProblem = {}
+        this._waitingBlinkEvent = -1;
 
         this._settings = ExtensionUtils.getSettings(Utils.HUELIGHTS_SETTINGS_SCHEMA);
         this._settings.connect("changed", Lang.bind(this, function() {
@@ -1596,12 +1597,20 @@ var PhueMenu = GObject.registerClass({
      * @param {String} reqBridgeid
      * @param {Object} lights data
      */
-    notifyBackupLight(reqBridgeid, dataLights) {
+    blinkBackupLight(reqBridgeid, dataLights) {
 
         let cmd = {};
         let lightState;
 
         for (let i in this._notifyLights) {
+
+            if (this._notifyLights[i]["action"] !== Utils.HUELIGHTS_EVENT_ACTION_BLINK) {
+                continue;
+            }
+
+            if (this._waitingBlinkEvent !== this._notifyLights[i]["event"]) {
+                continue;
+            }
 
             let bridgeid = i.split("::")[0];
             let lightid = parseInt(i.split("::")[1]);
@@ -1633,14 +1642,22 @@ var PhueMenu = GObject.registerClass({
     /**
      * Start light notification on a bridge
      * 
-     * @method startNotify
+     * @method startBlink
      * @param {String} requested bridge
      */
-    startNotify(reqBirdgeid) {
+    startBlink(reqBirdgeid) {
 
         return new Promise(resolve => {
 
             for (let i in this._notifyLights) {
+
+                if (this._notifyLights[i]["action"] !== Utils.HUELIGHTS_EVENT_ACTION_BLINK) {
+                    continue;
+                }
+
+                if (this._waitingBlinkEvent !== this._notifyLights[i]["event"]) {
+                    continue;
+                }
 
                 let bridgeid = i.split("::")[0];
                 let lightid = parseInt(i.split("::")[1]);
@@ -1724,12 +1741,72 @@ var PhueMenu = GObject.registerClass({
      */
     async checkNotifications(birdgeid, dataLights) {
 
-        if (this._waitingNotification) {
+        if (this._waitingBlinkEvent > -1) {
 
-            this.notifyBackupLight(birdgeid, dataLights);
-            await this.startNotify(birdgeid);
+            this.blinkBackupLight(birdgeid, dataLights);
+            await this.startBlink(birdgeid);
 
-            this._waitingNotification = false;
+            this._waitingBlinkEvent = -1;
+        }
+    }
+
+    _runActionEnable(event) {
+        for (let i in this._notifyLights) {
+
+            if (this._notifyLights[i]["action"] !== Utils.HUELIGHTS_EVENT_ACTION_TURN_ON) {
+                continue;
+            }
+
+            if (this._notifyLights[i]["event"] !== event) {
+                continue;
+            }
+
+            let bridgeid = i.split("::")[0];
+            let lightid = parseInt(i.split("::")[1]);
+
+            let bri = 254;
+            if (this._notifyLights[i]["bri"] !== undefined) {
+                bri = this._notifyLights[i]["bri"];
+            }
+
+            let r = 255;
+            let g = 255;
+            let b = 255;
+            if (this._notifyLights[i]["r"] !== undefined) {
+                r = this._notifyLights[i]["r"];
+                g = this._notifyLights[i]["g"];
+                b = this._notifyLights[i]["b"];
+            }
+
+            let xy = Utils.colorToHueXY(r, g, b);
+
+            this.hue.instances[bridgeid].setLights(
+                lightid,
+                {"on": true, "bri":bri, "xy":xy, "transitiontime": 0 },
+                PhueRequestype.NO_RESPONSE_NEED
+            );
+        }
+    }
+
+    _runActionDisable(event) {
+        for (let i in this._notifyLights) {
+
+            if (this._notifyLights[i]["action"] !== Utils.HUELIGHTS_EVENT_ACTION_TURN_OFF) {
+                continue;
+            }
+
+            if (this._notifyLights[i]["event"] !== event) {
+                continue;
+            }
+
+            let bridgeid = i.split("::")[0];
+            let lightid = parseInt(i.split("::")[1]);
+
+            this.hue.instances[bridgeid].setLights(
+                lightid,
+                {"on": false},
+                PhueRequestype.NO_RESPONSE_NEED
+            );
         }
     }
 
@@ -1739,10 +1816,11 @@ var PhueMenu = GObject.registerClass({
      * It will invoke checkNotifications() for all bridges
      * 
      * @method runNotify
+     * @param {int} event
      */
-    runNotify() {
+    runEvent(event) {
 
-        this._waitingNotification = true;
+        this._waitingBlinkEvent = event;
 
         for (let i in this.hue.instances) {
             if (!this.hue.instances[i].isConnected()) {
@@ -1751,5 +1829,8 @@ var PhueMenu = GObject.registerClass({
 
             this.hue.instances[i].getLights();
         }
+
+        this._runActionEnable(event);
+        this._runActionDisable(event);
     }
 });

@@ -53,7 +53,7 @@ function createBannerHue() {
 
     if (hueLightsMenu !== null) {
 
-        hueLightsMenu.runNotify();
+        hueLightsMenu.runEvent(Utils.HUELIGHTS_EVENT_ON_NOTIFICATION);
     }
 
     return this.source.createBanner(this);
@@ -85,6 +85,8 @@ function enable() {
     origCreateBanner = MessageTray.Notification.prototype.createBanner;
     MessageTray.Notification.prototype.createBanner = createBannerHue;
 
+    hueLightsMenu.runEvent(Utils.HUELIGHTS_EVENT_ON_ENABLE);
+
     log(`enabling ${Me.metadata.name} version ${Me.metadata.version}`);
 }
 
@@ -95,6 +97,8 @@ function enable() {
  * @method disable
  */
 function disable() {
+
+    hueLightsMenu.runEvent(Utils.HUELIGHTS_EVENT_ON_DISABLE);
 
     MessageTray.Notification.prototype.createBanner = origCreateBanner;
 

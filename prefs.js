@@ -742,7 +742,17 @@ var Prefs = class HuePrefs {
                 briVal = this._notifyLights[eventID]["bri"];
             }
             brightnessEventWidget.value = briVal;
-
+            brightnessEventWidget.connect(
+                "value-changed",
+                this._widgetEventHandler.bind(
+                    this,
+                    {
+                        "event": "event-brightness-changed",
+                        "object": brightnessEventWidget,
+                        "eventID": eventID
+                    }
+                )
+            )
             eventsWidget.attach_next_to(brightnessEventWidget, lightComboBox, Gtk.PositionType.RIGHT, 1, 1);
 
             let colorButtonEventWidget = new Gtk.ColorButton();
@@ -758,7 +768,17 @@ var Prefs = class HuePrefs {
                 eventLightColor.blue = this._notifyLights[eventID]["b"] / 255;
             }
             colorButtonEventWidget.set_rgba(eventLightColor);
-
+            colorButtonEventWidget.connect(
+                "color-set",
+                this._widgetEventHandler.bind(
+                    this,
+                    {
+                        "event": "event-color-changed",
+                        "object": colorButtonEventWidget,
+                        "eventID": eventID
+                    }
+                )
+            )
             eventsWidget.attach_next_to(colorButtonEventWidget, brightnessEventWidget, Gtk.PositionType.RIGHT, 1, 1);
 
             let eventComboBox = new Gtk.ComboBoxText();
@@ -789,9 +809,24 @@ var Prefs = class HuePrefs {
             eventActionComboBox.append_text(_("turn off"));
             eventActionComboBox.set_active(eventAction);
 
+            eventActionComboBox.connect(
+                "changed",
+                this._widgetEventHandler.bind(
+                    this,
+                    {"event": "action-event-changed", "object": eventActionComboBox, "eventID": eventID}
+                )
+            )
+
             eventsWidget.attach_next_to(eventActionComboBox, eventComboBox, Gtk.PositionType.RIGHT, 1, 1);
 
             let removeWidget = new Gtk.Button({label: _("Remove")});
+            removeWidget.connect(
+                "clicked",
+                this._widgetEventHandler.bind(
+                    this,
+                    {"event": "remove-event", "eventID": eventID}
+                )
+            );
 
             eventsWidget.attach_next_to(removeWidget, eventActionComboBox, Gtk.PositionType.RIGHT, 1, 1);
 
@@ -1128,17 +1163,18 @@ var Prefs = class HuePrefs {
                 break;
 
             case "add-event":
-                this._notifyLights["none"] = {};
+                this._notifyLights["none"] = {"action":Utils.HUELIGHTS_EVENT_ACTION_BLINK, "event":Utils.HUELIGHTS_EVENT_ON_NOTIFICATION};
                 this.getPrefsWidget(2);
                 break;
 
             case "light-event-changed":
                 let n = data["object"].get_active();
-                let eventID = "";
+                let eventID = ""
+                let partialEventID = "";
                 let counter = 0;
                 for (let i in data["alllights"]) {
                     if (counter === n) {
-                        eventID = i;
+                        partialEventID = i;
                         break;
                     }
                     counter++;
@@ -1147,8 +1183,11 @@ var Prefs = class HuePrefs {
                 let event = Utils.HUELIGHTS_EVENT_DEFAULT;
                 if (this._notifyLights[data["previous_eventID"]]["event"] !== undefined) {
                     event = this._notifyLights[data["previous_eventID"]]["event"];
+                }
+                eventID = `${partialEventID}::${event}`
 
-                    eventID = `${eventID}::${event}`
+                if (data["previous_eventID"] === "none" && this._notifyLights[eventID]  !== undefined) {
+                    eventID = `${partialEventID}::-1`
                 }
 
                 this._notifyLights[eventID] = this._notifyLights[data["previous_eventID"]];
@@ -1157,6 +1196,22 @@ var Prefs = class HuePrefs {
 
                 this.writeNotifyLightsSettings();
                 this.getPrefsWidget(2);
+                break;
+
+            case "event-brightness-changed":
+
+                this._notifyLights[data["eventID"]]["bri"] = Math.round(data["object"].value);
+                this.writeNotifyLightsSettings();
+                break;
+
+            case "event-color-changed":
+
+                let notifyLightColor = data["object"].get_rgba();
+                this._notifyLights[data["eventID"]]["r"] = Math.round(notifyLightColor.red * 255);
+                this._notifyLights[data["eventID"]]["g"] = Math.round(notifyLightColor.green * 255);
+                this._notifyLights[data["eventID"]]["b"] = Math.round(notifyLightColor.blue * 255);
+
+                this.writeNotifyLightsSettings();
                 break;
 
             case "event-event-changed":
@@ -1171,6 +1226,19 @@ var Prefs = class HuePrefs {
                     delete this._notifyLights[data["previous_eventID"]];
                 }
 
+                this.writeNotifyLightsSettings();
+                this.getPrefsWidget(2);
+                break;
+
+            case "action-event-changed":
+
+                this._notifyLights[data["eventID"]]["action"] = data["object"].get_active();
+
+                this.writeNotifyLightsSettings();
+                break;
+
+            case "remove-event":
+                delete(this._notifyLights[data["eventID"]])
                 this.writeNotifyLightsSettings();
                 this.getPrefsWidget(2);
                 break;
