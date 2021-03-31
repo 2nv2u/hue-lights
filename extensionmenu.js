@@ -271,6 +271,19 @@ var PhueMenu = GObject.registerClass({
         }
 
         /**
+         * this._compactMenu needs rebuild
+         */
+        tmpVal = this._compactMenu;
+
+        this._compactMenu = this._settings.get_boolean(
+            Utils.HUELIGHTS_SETTINGS_COMPACTMENU
+        );
+ 
+        if (tmpVal !== this._compactMenu) {
+            menuNeedsRebuild = true;
+        }
+
+        /**
          * debug doesn't need rebuild
          */
         Utils.debug = this._settings.get_boolean(
@@ -1325,7 +1338,7 @@ var PhueMenu = GObject.registerClass({
      * @param {Number} groupid creates menu item for all lights (not mandatory)
      * @return {Object} array of menuitem with light controls
      */
-    _createMenuLights(bridgeid, data, lights, groupid) {
+    _createMenuLights(bridgeid, data, lights, groupid, compact = null) {
 
         let lightsItems = [];
         let light;
@@ -1334,25 +1347,27 @@ var PhueMenu = GObject.registerClass({
             return [];
         }
 
-        light = this._createItemLight(
-            bridgeid,
-            data,
-            lights,
-            groupid
-        );
-        lightsItems.push(light);
-
-        for (let lightid in lights) {
+        if (compact !== "scenes") {
             light = this._createItemLight(
                 bridgeid,
                 data,
-                parseInt(lights[lightid]),
-                null
+                lights,
+                groupid
             );
             lightsItems.push(light);
+
+            for (let lightid in lights) {
+                light = this._createItemLight(
+                    bridgeid,
+                    data,
+                    parseInt(lights[lightid]),
+                    null
+                );
+                lightsItems.push(light);
+            }
         }
 
-        if (this._showScenes) {
+        if (this._showScenes && compact !== "lights") {
             lightsItems = lightsItems.concat(
                 this._createScenes(bridgeid, data, groupid)
             );
@@ -1500,6 +1515,255 @@ var PhueMenu = GObject.registerClass({
         iconPath = Me.dir.get_path() + `/media/HueIcons/${Utils.getHueIconFile[groupData["class"]]}.svg`
 
         return this._getIconByPath(iconPath);
+    }
+
+    _createCompactGroups(bridgeid, data, groupType) {
+
+        let groupItem;
+        let menuItems = [];
+        let groupIcon = null;
+
+        if (data["groups"] === undefined) {
+            return [];
+        }
+
+        for (let groupid in data["groups"]) {
+            if (data["groups"][groupid]["type"] !== groupType) {
+                continue;
+            }
+
+            groupItem = new PopupMenu.PopupMenuItem(
+                data["groups"][groupid]["name"]
+            );
+
+            groupIcon = this._tryGetGroupIcon(data["groups"][groupid]);
+            if (groupIcon !== null) {
+                groupItem.insert_child_at_index(groupIcon, 1);
+            }
+
+            groupItem.set_x_align(Clutter.ActorAlign.FILL);
+            groupItem.label.set_x_expand(true);
+
+            groupItem.add(this._createGroupSwitch(bridgeid, groupid));
+
+            groupItem.connect(
+                'button-press-event',
+                () => {
+                    this._compactMenu["selected-group"] = groupid;
+
+                    if (this._compactMenu["groups"]["icon"] != null){
+                        this._compactMenu["groups"]["object"].remove_child(
+                            this._compactMenu["groups"]["icon"] 
+                        );
+                    }
+
+                    if (this._compactMenu["groups"]["switch"] != null){
+                        this._compactMenu["groups"]["object"].remove_child(
+                            this._compactMenu["groups"]["switch"] 
+                        );
+                    }
+
+                    groupIcon = this._tryGetGroupIcon(data["groups"][groupid]);
+
+                    if (groupIcon !== null) {
+                        this._compactMenu["groups"]["object"].insert_child_at_index(groupIcon, 1);
+                        this._compactMenu["groups"]["icon"] = groupIcon;
+                    }
+
+                    this._compactMenu["groups"]["object"].label.text = data["groups"][groupid]["name"];
+
+                    let groupSwitch = this._createGroupSwitch(bridgeid, groupid);
+                    this._compactMenu["groups"]["object"].add(groupSwitch);
+                    this._compactMenu["groups"]["switch"] = groupSwitch;
+
+                    /* lights */
+                    this._compactMenu["lights"]["object"].menu.removeAll();
+
+                    let lightItems = this._createMenuLights(
+                        bridgeid,
+                        data,
+                        data["groups"][groupid]["lights"],
+                        groupid,
+                        "lights"
+                    );
+                    for (let lightItem in lightItems) {
+                        this._compactMenu["lights"]["object"].menu.addMenuItem(lightItems[lightItem]);
+                    }
+
+                    /* scenes */
+                    if (this._showScenes && this._compactMenu["scenes"] !== undefined) {
+                        this._compactMenu["scenes"]["object"].menu.removeAll();
+
+                        let scenesItems = this._createMenuLights(
+                            bridgeid,
+                            data,
+                            data["groups"][groupid]["lights"],
+                            groupid,
+                            "scenes"
+                        );
+                        for (let sceneItem in scenesItems) {
+                            this._compactMenu["scenes"]["object"].menu.addMenuItem(scenesItems[sceneItem]);
+                        }
+                    }
+                }
+            );
+
+            menuItems.push(groupItem);
+        }
+
+        return menuItems;
+    }
+
+    _createCompactMenuGroups(bridgeid, data) {
+        let menuItems = [];
+        let items = [];
+
+        this._compactMenu = {};
+
+        let groupsSubMenu = new PopupMenu.PopupSubMenuMenuItem(
+            _("Rooms/Zones")
+        );
+
+        let groupsIcon = null;
+        if (this._iconPack !== PhueIconPack.NONE) {
+            let iconPath = "";
+
+            iconPath = Me.dir.get_path() + `/media/HueIcons/roomsOther.svg`
+
+            groupsIcon = this._getIconByPath(iconPath);
+        }
+
+        if (groupsIcon !== null) {
+            groupsSubMenu.insert_child_at_index(groupsIcon, 1);
+        }
+
+        this._compactMenu["groups"] = {}
+        this._compactMenu["groups"]["object"] = groupsSubMenu;
+        this._compactMenu["groups"]["icon"] = groupsIcon;
+        this._compactMenu["groups"]["switch"] = null;
+        this._compactMenu["selected-group"] = null;
+
+        menuItems.push(groupsSubMenu);
+
+        if (this._zonesFirst) {
+            items = items.concat(
+                this._createCompactGroups(bridgeid, data, "Zone")
+            );
+            items = items.concat(
+                this._createCompactGroups(bridgeid, data, "Room")
+            );
+        } else {
+            items = items.concat(
+                this._createCompactGroups(bridgeid, data, "Room")
+            );
+            items = items.concat(
+                this._createCompactGroups(bridgeid, data, "Zone")
+            );
+        }
+
+        for (let i in items) {
+            groupsSubMenu.menu.addMenuItem(items[i]);
+        }
+
+        return menuItems;
+    }
+
+    _createCompactMenuLights(bridgeid, data) {
+        let lightsSubMenu = new PopupMenu.PopupSubMenuMenuItem(
+            _("Lights")
+        );
+
+        let lightsIcon = null;
+        if (this._iconPack !== PhueIconPack.NONE) {
+            let iconPath = "";
+
+            iconPath = Me.dir.get_path() + `/media/HueIcons/bulbGroup.svg`
+
+            lightsIcon = this._getIconByPath(iconPath);
+        }
+
+        if (lightsIcon !== null) {
+            lightsSubMenu.insert_child_at_index(lightsIcon, 1);
+        }
+
+        this._compactMenu["lights"] = {};
+        this._compactMenu["lights"]["object"] = lightsSubMenu;
+        this._compactMenu["lights"]["icon"] = lightsIcon;
+
+        if (this._compactMenu["selected-group"] === null) {
+
+            lightsSubMenu.menu.addMenuItem(
+                new PopupMenu.PopupMenuItem(
+                    _("No room/zone selected")
+                )
+            );
+
+            return lightsSubMenu;
+        }
+
+        let groupid = this._compactMenu["selected-group"];
+
+        let lightItems = this._createMenuLights(
+            bridgeid,
+            data,
+            data["groups"][groupid]["lights"],
+            groupid,
+            "lights"
+        );
+        for (let lightItem in lightItems) {
+            lightsSubMenu.menu.addMenuItem(lightItems[lightItem]);
+        }
+
+        return lightsSubMenu;
+    }
+
+    _createCompactMenuScenes(bridgeid, data) {
+        let scenesSubMenu = new PopupMenu.PopupSubMenuMenuItem(
+            _("Scenes")
+        );
+
+        let scenesIcon = null;
+        if (this._iconPack !== PhueIconPack.NONE) {
+            let iconPath = "";
+
+            iconPath = Me.dir.get_path() + `/media/HueIcons/uicontrolsScenes.svg`
+
+            scenesIcon = this._getIconByPath(iconPath);
+        }
+
+        if (scenesIcon !== null) {
+            scenesSubMenu.insert_child_at_index(scenesIcon, 1);
+        }
+
+        this._compactMenu["scenes"] = {};
+        this._compactMenu["scenes"]["object"] = scenesSubMenu;
+        this._compactMenu["scenes"]["icon"] = scenesIcon;
+
+        if (this._compactMenu["selected-group"] === null) {
+
+            scenesSubMenu.menu.addMenuItem(
+                new PopupMenu.PopupMenuItem(
+                    _("No room/zone selected")
+                )
+            );
+
+            return scenesSubMenu;
+        }
+
+        let groupid = this._compactMenu["selected-group"];
+
+        let lightItems = this._createMenuLights(
+            bridgeid,
+            data,
+            data["groups"][groupid]["lights"],
+            groupid,
+            "scenes"
+        );
+        for (let lightItem in lightItems) {
+            scenesSubMenu.menu.addMenuItem(lightItems[lightItem]);
+        }
+
+        return scenesSubMenu;
     }
 
     /**
@@ -1816,6 +2080,39 @@ var PhueMenu = GObject.registerClass({
         }
 
         return entertainmentMainItem;
+    }
+
+    _createCompactMenuBridge(bridgeid) {
+        let items = [];
+        let data = {};
+
+        data = this.bridesData[bridgeid];
+
+        if (data["config"] === undefined) {
+            return [];
+        }
+
+        items.push(this._createSubMenuBridge(bridgeid, data));
+
+        items = items.concat(
+            this._createEntertainment(bridgeid, data)
+        );
+
+        items = items.concat(
+            this._createCompactMenuGroups(bridgeid, data)
+        );
+
+        items = items.concat(
+            this._createCompactMenuLights(bridgeid, data)
+        );
+
+        if (this._showScenes) {
+            items = items.concat(
+                this._createCompactMenuScenes(bridgeid, data)
+            );
+        }
+
+        return items;
     }
 
     /**
@@ -2701,7 +2998,13 @@ var PhueMenu = GObject.registerClass({
 
             this.entertainmentInit(bridgeid);
 
-            bridgeItems = this._createMenuBridge(bridgeid);
+            if (!this._compactMenu) {
+                bridgeItems = this._createMenuBridge(bridgeid);
+            }
+
+            if (this._compactMenu) {
+                bridgeItems = this._createCompactMenuBridge(bridgeid);
+            }
 
             for (let item in bridgeItems) {
                 this.menu.addMenuItem(bridgeItems[item]);

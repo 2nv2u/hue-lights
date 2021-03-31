@@ -99,6 +99,7 @@ var Prefs = class HuePrefs {
         this._indicatorPosition = this._settings.get_enum(Utils.HUELIGHTS_SETTINGS_INDICATOR);
         this._zonesFirst = this._settings.get_boolean(Utils.HUELIGHTS_SETTINGS_ZONESFIRST);
         this._showScenes = this._settings.get_boolean(Utils.HUELIGHTS_SETTINGS_SHOWSCENES);
+        this._compactMenu = this._settings.get_boolean(Utils.HUELIGHTS_SETTINGS_COMPACTMENU);
         this._connectionTimeout = this._settings.get_int(Utils.HUELIGHTS_SETTINGS_CONNECTION_TIMEOUT);
         Utils.debug = this._settings.get_boolean(Utils.HUELIGHTS_SETTINGS_DEBUG);
         this._notifyLights = this._settings.get_value(Utils.HUELIGHTS_SETTINGS_NOTIFY_LIGHTS).deep_unpack();
@@ -477,6 +478,40 @@ var Prefs = class HuePrefs {
         )
         generalWidget.attach_next_to(
             iconPackWidget,
+            labelWidget,
+            Gtk.PositionType.RIGHT,
+            1,
+            1
+        );
+
+        top++;
+
+        /**
+         * Use compact menu
+         */
+         labelWidget = new Gtk.Label(
+            {label: _("Use compact menu:")}
+        );
+        generalWidget.attach(labelWidget, 1, top, 1, 1);
+
+        let compactMenuWidget = new Gtk.Switch(
+            {
+                active: this._compactMenu,
+                hexpand: false,
+                vexpand: false,
+                halign:Gtk.Align.CENTER,
+                valign:Gtk.Align.CENTER
+            }
+        );
+        compactMenuWidget.connect(
+            "notify::active",
+            this._widgetEventHandler.bind(
+                this,
+                {"event": "compact-menu", "object": compactMenuWidget}
+            )
+        )
+        generalWidget.attach_next_to(
+            compactMenuWidget,
             labelWidget,
             Gtk.PositionType.RIGHT,
             1,
@@ -1369,6 +1404,15 @@ var Prefs = class HuePrefs {
                 this._settings.set_enum(
                     Utils.HUELIGHTS_SETTINGS_ICONPACK,
                     this._iconPack
+                );
+                break;
+
+            case "compact-menu":
+
+                this._compactMenu = data["object"].get_active();
+                this._settings.set_boolean(
+                    Utils.HUELIGHTS_SETTINGS_COMPACTMENU,
+                    this._compactMenu
                 );
                 break;
 
