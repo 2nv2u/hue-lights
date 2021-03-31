@@ -101,6 +101,7 @@ var PhueMenu = GObject.registerClass({
         this.refreshMenuObjects = {};
         this.oldNotifylight = {};
         this.bridgeInProblem = {}
+        this._bridgesInMenu = [];
 
         this._isStreaming = {};
 
@@ -239,6 +240,7 @@ var PhueMenu = GObject.registerClass({
         ).deep_unpack();
 
         if (tmpVal !== JSON.stringify(this.hue.bridges)) {
+            this._bridgesInMenu = [];
             menuNeedsRebuild = true;
         }
 
@@ -921,16 +923,99 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
-     * Creates submenu item of sensors
-     * and adds icon of bridge. If no sensor found,
-     * only dummy item is displayed.
+     * Creates menu items for switching bridges.
      * 
-     * @method _createMenuSensors
+     * @method _createOtherBridgesItems
+     * @param {String} bridgeid
+     * @return {Object} array of menu items
+     */
+    _createOtherBridgesItems(bridgeid) {
+        let items = [];
+        let switchesCounter = 0;
+
+        /**
+         * if more then one bridge is displayed in menu
+         * then all bridges will be displayed,
+         * no need for switching item
+         */
+        if (this._bridgesInMenu.length > 1) {
+            return items;
+        }
+
+        for (let bridgeid in this.hue.instances) {
+
+            let found = false;
+            for (let i of this._bridgesInMenu) {
+                if (bridgeid === i) {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                if (this.bridesData[bridgeid]["config"] === undefined) {
+                    continue;
+                }
+
+                let switchItem = new PopupMenu.PopupMenuItem(
+                    _("Switch to") + ` ${this.bridesData[bridgeid]["config"]["name"]}`
+                )
+
+                if (this._iconPack !== PhueIconPack.NONE) {
+                    let iconPath;
+
+                    switch (this.bridesData[bridgeid]["config"]["modelid"]) {
+
+                        case "BSB001":
+                            iconPath = Me.dir.get_path() + `/media/HueIcons/devicesBridgesV1.svg`;
+                            break;
+
+                        case "BSB002":
+                            iconPath = Me.dir.get_path() + `/media/HueIcons/devicesBridgesV2.svg`;
+                            break;
+
+                        default:
+                            iconPath = Me.dir.get_path() + `/media/HueIcons/devicesBridgesV2.svg`;
+                     }
+
+                    let icon = this._getIconByPath(iconPath);
+
+                    if (icon !== null) {
+                        switchItem.insert_child_at_index(icon, 1);
+                    }
+                }
+
+                switchItem.connect(
+                    "button-press-event",
+                    () => {
+                        this._bridgesInMenu = [bridgeid];
+                        this.rebuildMenu();
+                    }
+                );
+
+                items.push(switchItem);
+
+                switchesCounter++;
+            }
+        }
+
+        if (switchesCounter > 0) {
+            items.push(new PopupMenu.PopupSeparatorMenuItem());
+        }
+
+        return items;
+    }
+
+    /**
+     * Creates bridge submenu with sensors
+     * and settings.
+     * 
+     * @method _createSubMenuBridge
      * @param {Number} bridgeid
      * @param {Object} data to search
      * @return {Object} submenuitem of the bridge
      */
-    _createMenuSensors(bridgeid, data) {
+     _createSubMenuBridge(bridgeid, data) {
 
         let item;
         let sensorCount = 0;
@@ -940,6 +1025,34 @@ var PhueMenu = GObject.registerClass({
         item = new PopupMenu.PopupSubMenuMenuItem(
             data["config"]["name"]
         );
+
+        if (this._iconPack !== PhueIconPack.NONE) {
+            switch (data["config"]["modelid"]) {
+
+                case "BSB001":
+                    iconPath = Me.dir.get_path() + `/media/HueIcons/devicesBridgesV1.svg`;
+
+                    Utils.logDebug("Bridge is version 1");
+                    break;
+
+                case "BSB002":
+                    iconPath = Me.dir.get_path() + `/media/HueIcons/devicesBridgesV2.svg`;
+
+                    Utils.logDebug("Bridge is version 2");
+                    break;
+
+                default:
+                    iconPath = Me.dir.get_path() + `/media/HueIcons/devicesBridgesV2.svg`;
+
+                    Utils.logDebug("Bridge version unknown");
+            }
+
+            icon = this._getIconByPath(iconPath);
+
+            if (icon !== null) {
+                item.insert_child_at_index(icon, 1);
+            }
+        }
 
         for (let i in data["sensors"]) {
 
@@ -964,46 +1077,17 @@ var PhueMenu = GObject.registerClass({
             }
         }
 
-        if (!sensorCount) {
-            /* we have no sensors, so create a dummy item */
-            item = new PopupMenu.PopupMenuItem(
-                data["config"]["name"],
-                {
-                    hover: false,
-                    reactive: false,
-                    can_focus: false
-                }
-            );
+        if (sensorCount > 0) {
+            /* we have some sensors, create a separator item */
+            item.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         }
 
-        if (this._iconPack === PhueIconPack.NONE) {
-            return item;
+        for (let otherBridgesItem of this._createOtherBridgesItems(bridgeid)) {
+            item.menu.addMenuItem(otherBridgesItem);
         }
 
-        switch (data["config"]["modelid"]) {
-
-            case "BSB001":
-                iconPath = Me.dir.get_path() + `/media/HueIcons/devicesBridgesV1.svg`;
-
-                Utils.logDebug("Bridge is version 1");
-                break;
-
-            case "BSB002":
-                iconPath = Me.dir.get_path() + `/media/HueIcons/devicesBridgesV2.svg`;
-
-                Utils.logDebug("Bridge is version 2");
-                break;
-
-            default:
-                iconPath = Me.dir.get_path() + `/media/HueIcons/devicesBridgesV2.svg`;
-
-                Utils.logDebug("Bridge version unknown");
-        }
-
-        icon = this._getIconByPath(iconPath);
-
-        if (icon !== null) {
-            item.insert_child_at_index(icon, 1);
+        for (let settingsItem of this._createSettingItems(false)) {
+            item.menu.addMenuItem(settingsItem);
         }
 
         return item;
@@ -1668,8 +1752,14 @@ var PhueMenu = GObject.registerClass({
         }
 
         entertainmentMainItem = new PopupMenu.PopupSubMenuMenuItem(
-            "Entertainment areas"
+            _("Entertainment areas")
         );
+
+        this.refreshMenuObjects[`special::${bridgeid}::entertainment-label`] = {
+            "bridgeid": bridgeid,
+            "object": entertainmentMainItem.label,
+            "type": "entertainment-label"
+        }
 
         if (this._iconPack !== PhueIconPack.NONE) {
             let iconPath = "";
@@ -1747,7 +1837,11 @@ var PhueMenu = GObject.registerClass({
             return [];
         }
 
-        items.push(this._createMenuSensors(bridgeid, data));
+        items.push(this._createSubMenuBridge(bridgeid, data));
+
+        items = items.concat(
+            this._createEntertainment(bridgeid, data)
+        );
 
         if (this._zonesFirst) {
             items = items.concat(
@@ -1764,10 +1858,6 @@ var PhueMenu = GObject.registerClass({
                 this._createMenuGroups(bridgeid, data, "Zone")
             );
         }
-
-        items = items.concat(
-            this._createEntertainment(bridgeid, data)
-        );
 
         return items;
     }
@@ -2208,6 +2298,26 @@ var PhueMenu = GObject.registerClass({
 
                     break;
 
+                case "entertainment-label":
+
+                    object.text = _("Entertainment areas");
+
+                    if (this.bridesData[bridgeid]["groups"] === undefined) {
+                        break;
+                    }
+
+                    for (let groupid in this.bridesData[bridgeid]["groups"]) {
+                        if (this.bridesData[bridgeid]["groups"][groupid]["type"] !== "Entertainment") {
+                            continue;
+                        }
+
+                        if (this.bridesData[bridgeid]["groups"][groupid]["stream"]["active"]) {
+                            object.text = `${this.bridesData[bridgeid]["groups"][groupid]["name"]} ` + _("is syncing");
+                        }
+                    }
+
+                    break;
+
                 default:
             }
         }
@@ -2432,56 +2542,56 @@ var PhueMenu = GObject.registerClass({
         }
     }
 
-    /**
-     * Rebuild the menu from scratch
-     * 
-     * @method rebuildMenu
-     */
-    rebuildMenu() {
+    getBridgesInMenu(currentBridges) {
+        let bridges = [];
 
-        Utils.logDebug("Rebuilding menu.");
-
-        let bridgeItems = [];
-        let oldItems = this.menu._getMenuItems();
-        let icon;
-        let instanceCounter = 0;
-
-        this.refreshMenuObjects = {};
-
-        this.hue.disableAsyncMode();
-        this.bridesData = this.hue.checkBridges(false);
-        this.hue.enableAsyncMode();
-
-        for (let item in oldItems){
-            oldItems[item].destroy();
+        if (currentBridges.length > 0) {
+            return currentBridges;
         }
 
-        for (let bridgeid in this.hue.instances) {
-
-            if (!this.hue.instances[bridgeid].isConnected()){
-
-                Utils.logDebug(`Bridge ${bridgeid} is not connected.`);
+        let defaultExists = false;
+        for (let bridgeid in this.hue.bridges) {
+            if (this.hue.bridges[bridgeid]["default"] === undefined) {
                 continue;
             }
 
-            instanceCounter++;
- 
-            this.hue.instances[bridgeid].disconnectAll;
-
-            this._connectHueInstance(bridgeid);
-
-            this.entertainmentInit(bridgeid);
-
-            bridgeItems = this._createMenuBridge(bridgeid);
-
-            for (let item in bridgeItems) {
-                this.menu.addMenuItem(bridgeItems[item]);
+            if (this.hue.bridges[bridgeid]["default"]!== bridgeid) {
+                continue;
             }
 
-            this.menu.addMenuItem(
-                new PopupMenu.PopupSeparatorMenuItem()
-            );
+            if (this.hue.instances[bridgeid] === undefined){
+                continue;
+            }
+
+            if (!this.hue.instances[bridgeid].isConnected()){
+                continue;
+            }
+
+            bridges.push(bridgeid);
+            defaultExists = true;
         }
+
+        if (!defaultExists) {
+            for (let bridgeid in this.hue.instances) {
+                bridges.push(bridgeid);
+            }
+        }
+
+        return bridges;
+    }
+
+    /**
+     * Creates Refresh menu item and
+     * settings item. Items can be in one item
+     * or multipe items.
+     * 
+     * @method _createSettingItems
+     * @param {Boolean} true for multiple items
+     * @return {Object} array of menu items
+     */
+    _createSettingItems(separateItems) {
+        let icon;
+        let items = [];
 
         /**
          * Refresh menu item
@@ -2503,7 +2613,7 @@ var PhueMenu = GObject.registerClass({
             () => { this.rebuildMenu(); }
         );
 
-        if (instanceCounter > 0) {
+        if (!separateItems) {
             let settingsButton = new St.Button({reactive: true, can_focus: true});
             settingsButton.set_x_align(Clutter.ActorAlign.END);
             settingsButton.set_x_expand(true);
@@ -2515,9 +2625,9 @@ var PhueMenu = GObject.registerClass({
             refreshMenuItem.add_child(settingsButton);
         }
 
-        this.menu.addMenuItem(refreshMenuItem);
+        items.push(refreshMenuItem);
 
-        if (instanceCounter === 0) {
+        if (separateItems) {
             /**
              * Settings menu item
              */
@@ -2538,7 +2648,70 @@ var PhueMenu = GObject.registerClass({
                 'button-press-event',
                 () => {Util.spawn(["gnome-shell-extension-prefs", Me.uuid]);}
             );
-            this.menu.addMenuItem(prefsMenuItem);
+            items.push(prefsMenuItem);
+        }
+
+        return items;
+    }
+
+    /**
+     * Rebuild the menu from scratch
+     * 
+     * @method rebuildMenu
+     */
+    rebuildMenu() {
+
+        Utils.logDebug("Rebuilding menu.");
+
+        let bridgeItems = [];
+        let oldItems = this.menu._getMenuItems();
+        let instanceCounter = 0;
+
+        this.refreshMenuObjects = {};
+
+        this.hue.disableAsyncMode();
+        this.bridesData = this.hue.checkBridges(false);
+        this.hue.enableAsyncMode();
+
+        this._bridgesInMenu = this.getBridgesInMenu(this._bridgesInMenu);
+
+        for (let item in oldItems){
+            oldItems[item].destroy();
+        }
+
+        for (let bridgeid of this._bridgesInMenu) {
+
+            if (!this.hue.instances[bridgeid].isConnected()){
+
+                Utils.logDebug(`Bridge ${bridgeid} is not connected.`);
+                continue;
+            }
+
+            if (instanceCounter > 0) {
+                this.menu.addMenuItem(
+                    new PopupMenu.PopupSeparatorMenuItem()
+                );
+            }
+
+            instanceCounter++;
+ 
+            this.hue.instances[bridgeid].disconnectAll;
+
+            this._connectHueInstance(bridgeid);
+
+            this.entertainmentInit(bridgeid);
+
+            bridgeItems = this._createMenuBridge(bridgeid);
+
+            for (let item in bridgeItems) {
+                this.menu.addMenuItem(bridgeItems[item]);
+            }
+        }
+
+        if (instanceCounter === 0 ) {
+            for (let settingsItem of this._createSettingItems(true)) {
+                this.menu.addMenuItem(settingsItem);
+            }
         }
 
         this.refreshMenu();

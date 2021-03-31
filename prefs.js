@@ -339,6 +339,37 @@ var Prefs = class HuePrefs {
                 1
             );
 
+            if (this._hue.bridges[bridge]["default"] !== undefined &&
+                this._hue.bridges[bridge]["default"] === bridge) {
+
+                let unDefaultWidget = new Gtk.Button({label: _("Unprefer")});
+                unDefaultWidget.connect(
+                    "clicked",
+                    this._widgetEventHandler.bind(
+                        this,
+                        {"event": "unset-default-bridge", "bridgeid": bridge}
+                    )
+                );
+                tmpWidged = unDefaultWidget;
+            } else {
+                let defaultWidget = new Gtk.Button({label: _("Prefer")});
+                defaultWidget.connect(
+                    "clicked",
+                    this._widgetEventHandler.bind(
+                        this,
+                        {"event": "set-default-bridge", "bridgeid": bridge}
+                    )
+                );
+                tmpWidged = defaultWidget;
+            }
+            bridgesWidget.attach_next_to(
+                tmpWidged,
+                removeWidget,
+                Gtk.PositionType.RIGHT,
+                1,
+                1
+            );
+
             top++;
         }
 
@@ -352,7 +383,7 @@ var Prefs = class HuePrefs {
                 {"event": "add-ip", "object": ipWidget}
             )
         );
-        bridgesWidget.attach(addWidget, 1, top, 4, 1);
+        bridgesWidget.attach(addWidget, 1, top, 5, 1);
 
         top++;
 
@@ -366,7 +397,7 @@ var Prefs = class HuePrefs {
                 {"event": "discovery-bridges"}
             )
         );
-        bridgesWidget.attach(discoveryWidget, 1, top, 4, 1);
+        bridgesWidget.attach(discoveryWidget, 1, top, 5, 1);
 
         top++;
 
@@ -1191,6 +1222,14 @@ var Prefs = class HuePrefs {
         }
     }
 
+    unsetDefaultBridge() {
+        for (let bridge in this._hue.bridges) {
+            if (this._hue.bridges[bridge]["default"] !== undefined) {
+                delete(this._hue.bridges[bridge]["default"]);
+            }
+        }
+    }
+
     /**
      * Handles events from widget in prefs.
      *
@@ -1232,6 +1271,28 @@ var Prefs = class HuePrefs {
                 if (this._hue.instances[bridgeid] !== undefined) {
                     delete this._hue.instances[bridgeid];
                 }
+
+                this._refreshPrefs = true;
+                this.writeSettings();
+                break;
+
+            case "set-default-bridge":
+
+                bridgeid = data["bridgeid"];
+                Utils.logDebug(`New default bridge is: ${bridgeid}`);
+
+                this.unsetDefaultBridge();
+                this._hue.bridges[bridgeid]["default"] = bridgeid;
+
+                this._refreshPrefs = true;
+                this.writeSettings();
+                break;
+
+            case "unset-default-bridge":
+
+                Utils.logDebug(`Default bridge unset.`);
+
+                this.unsetDefaultBridge();
 
                 this._refreshPrefs = true;
                 this.writeSettings();
