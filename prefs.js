@@ -490,7 +490,7 @@ var Prefs = class HuePrefs {
          * Use compact menu
          */
          labelWidget = new Gtk.Label(
-            {label: _("Use compact menu:")}
+            {label: _("Use compact menu by default:")}
         );
         generalWidget.attach(labelWidget, 1, top, 1, 1);
 
@@ -558,7 +558,7 @@ var Prefs = class HuePrefs {
          * Show zones in group menu
          */
         labelWidget = new Gtk.Label(
-            {label: _("Show scenes in group menu:")}
+            {label: _("Show scenes:")}
         );
         generalWidget.attach(labelWidget, 1, top, 1, 1);
 

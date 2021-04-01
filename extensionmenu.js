@@ -102,7 +102,7 @@ var PhueMenu = GObject.registerClass({
         this.oldNotifylight = {};
         this.bridgeInProblem = {}
         this._bridgesInMenu = [];
-
+        this._openMenuDefault = null;
         this._isStreaming = {};
 
         this._settings = ExtensionUtils.getSettings(Utils.HUELIGHTS_SETTINGS_SCHEMA);
@@ -141,6 +141,10 @@ var PhueMenu = GObject.registerClass({
                         /* this will invoke this.refreshMenu via "all-data" */
                         this.hue.instances[i].getAll();
                 }
+            }
+
+            if (this._openMenuDefault !== null){
+                this._openMenuDefault.open(false);
             }
         });
     }
@@ -278,7 +282,7 @@ var PhueMenu = GObject.registerClass({
         this._compactMenu = this._settings.get_boolean(
             Utils.HUELIGHTS_SETTINGS_COMPACTMENU
         );
- 
+
         if (tmpVal !== this._compactMenu) {
             menuNeedsRebuild = true;
         }
@@ -744,7 +748,8 @@ var PhueMenu = GObject.registerClass({
             this.refreshMenuObjects[bridgePath] = {
                 "bridgeid": bridgeid,
                 "object": temperatureLabel,
-                "type": "temperature"
+                "type": "temperature",
+                "tmp": false
             }
 
             break;
@@ -791,7 +796,8 @@ var PhueMenu = GObject.registerClass({
             this.refreshMenuObjects[bridgePath] = {
                 "bridgeid": bridgeid,
                 "object": lightLabel,
-                "type": "light-level"
+                "type": "light-level",
+                "tmp": false
             }
 
             break;
@@ -826,7 +832,8 @@ var PhueMenu = GObject.registerClass({
         this.refreshMenuObjects[bridgePath] = {
             "bridgeid": bridgeid,
             "object": batteryLabel,
-            "type": "battery"
+            "type": "battery",
+            "tmp": false
         }
 
         return batteryLabel;
@@ -879,7 +886,8 @@ var PhueMenu = GObject.registerClass({
         this.refreshMenuObjects[bridgePath] = {
             "bridgeid": bridgeid,
             "object":switchBox,
-            "type": "switch"
+            "type": "switch",
+            "tmp": false
         }
 
         return switchButton;
@@ -1039,6 +1047,16 @@ var PhueMenu = GObject.registerClass({
             data["config"]["name"]
         );
 
+        item.connect(
+            'button-press-event',
+            () => {
+                this._openMenuDefault = null;
+                if (!item.menu.isOpen) {
+                    this._openMenuDefault = item.menu;
+                }
+            }
+        );
+
         if (this._iconPack !== PhueIconPack.NONE) {
             switch (data["config"]["modelid"]) {
 
@@ -1147,7 +1165,8 @@ var PhueMenu = GObject.registerClass({
         this.refreshMenuObjects[bridgePath] = {
             "bridgeid": bridgeid,
             "object":slider,
-            "type": "brightness"
+            "type": "brightness",
+            "tmp": true
         }
 
         return slider;
@@ -1201,7 +1220,8 @@ var PhueMenu = GObject.registerClass({
         this.refreshMenuObjects[bridgePath] = {
             "bridgeid": bridgeid,
             "object": switchBox,
-            "type": "switch"
+            "type": "switch",
+            "tmp": true
         }
 
         return switchButton;
@@ -1336,6 +1356,7 @@ var PhueMenu = GObject.registerClass({
      * @param {Object} dictionary data for the bridgeid
      * @param {Number} lightid of created light (not used if groupid provided)
      * @param {Number} groupid creates menu item for all lights (not mandatory)
+     * @param {String} compact specifies scenes or lights (used by compact menu)
      * @return {Object} array of menuitem with light controls
      */
     _createMenuLights(bridgeid, data, lights, groupid, compact = null) {
@@ -1379,11 +1400,12 @@ var PhueMenu = GObject.registerClass({
      * Creates switch for group menu item
      * 
      * @method _createGroupSwitch
-     * @param {String} bridgeid 
-     * @param {String} groupid 
+     * @param {String} bridgeid
+     * @param {String} groupid
+     * @param {Boolean} tmp used by compact menu for removing from refreshing objects
      * @return {Object} switch button
      */
-    _createGroupSwitch(bridgeid, groupid) {
+    _createGroupSwitch(bridgeid, groupid, tmp = false) {
         let switchBox;
         let switchButton;
 
@@ -1416,7 +1438,8 @@ var PhueMenu = GObject.registerClass({
         this.refreshMenuObjects[bridgePath] = {
             "bridgeid": bridgeid,
             "object":switchBox,
-            "type": "switch"
+            "type": "switch",
+            "tmp": tmp
         }
 
         return switchButton;
@@ -1517,6 +1540,17 @@ var PhueMenu = GObject.registerClass({
         return this._getIconByPath(iconPath);
     }
 
+    /**
+     * Creates items of groups for compact menu,
+     * also adds callbe for such a item. In this
+     * callback the top-menu item is modified
+     * 
+     * @method _createCompactGroups
+     * @param {String} bridgeid
+     * @param {Object} data
+     * @param {String} groupType
+     * @return {Object} items of menu
+     */
     _createCompactGroups(bridgeid, data, groupType) {
 
         let groupItem;
@@ -1549,35 +1583,46 @@ var PhueMenu = GObject.registerClass({
             groupItem.connect(
                 'button-press-event',
                 () => {
-                    this._compactMenu["selected-group"] = groupid;
+                    this._compactBridgesMenu[bridgeid]["selected-group"] = groupid;
 
-                    if (this._compactMenu["groups"]["icon"] != null){
-                        this._compactMenu["groups"]["object"].remove_child(
-                            this._compactMenu["groups"]["icon"] 
+                    /* remove previously created object from refreshing */
+                    for (let i in this.refreshMenuObjects) {
+                        if (this.refreshMenuObjects[i]["tmp"] &&
+                            this.refreshMenuObjects[i]["bridgeid"] === bridgeid) {
+
+                            delete (this.refreshMenuObjects[i]);
+                        }
+                    }
+
+                    if (this._compactBridgesMenu[bridgeid]["groups"]["icon"] != null){
+                        this._compactBridgesMenu[bridgeid]["groups"]["object"].remove_child(
+                            this._compactBridgesMenu[bridgeid]["groups"]["icon"]
                         );
                     }
 
-                    if (this._compactMenu["groups"]["switch"] != null){
-                        this._compactMenu["groups"]["object"].remove_child(
-                            this._compactMenu["groups"]["switch"] 
+                    if (this._compactBridgesMenu[bridgeid]["groups"]["switch"] != null){
+                        this._compactBridgesMenu[bridgeid]["groups"]["object"].remove_child(
+                            this._compactBridgesMenu[bridgeid]["groups"]["switch"]
                         );
                     }
 
                     groupIcon = this._tryGetGroupIcon(data["groups"][groupid]);
 
                     if (groupIcon !== null) {
-                        this._compactMenu["groups"]["object"].insert_child_at_index(groupIcon, 1);
-                        this._compactMenu["groups"]["icon"] = groupIcon;
+                        this._compactBridgesMenu[bridgeid]["groups"]["object"].insert_child_at_index(groupIcon, 1);
+                        this._compactBridgesMenu[bridgeid]["groups"]["icon"] = groupIcon;
                     }
 
-                    this._compactMenu["groups"]["object"].label.text = data["groups"][groupid]["name"];
+                    this._compactBridgesMenu[bridgeid]["groups"]["object"].label.text = data["groups"][groupid]["name"];
 
-                    let groupSwitch = this._createGroupSwitch(bridgeid, groupid);
-                    this._compactMenu["groups"]["object"].add(groupSwitch);
-                    this._compactMenu["groups"]["switch"] = groupSwitch;
+                    let groupSwitch = this._createGroupSwitch(bridgeid, groupid, true);
+                    this._compactBridgesMenu[bridgeid]["groups"]["object"].add(groupSwitch);
+                    this._compactBridgesMenu[bridgeid]["groups"]["switch"] = groupSwitch;
 
                     /* lights */
-                    this._compactMenu["lights"]["object"].menu.removeAll();
+                    this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.removeAll();
+
+                    this._compactBridgesMenu[bridgeid]["lights"]["object"].visible = true;
 
                     let lightItems = this._createMenuLights(
                         bridgeid,
@@ -1587,12 +1632,14 @@ var PhueMenu = GObject.registerClass({
                         "lights"
                     );
                     for (let lightItem in lightItems) {
-                        this._compactMenu["lights"]["object"].menu.addMenuItem(lightItems[lightItem]);
+                        this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.addMenuItem(lightItems[lightItem]);
                     }
 
                     /* scenes */
-                    if (this._showScenes && this._compactMenu["scenes"] !== undefined) {
-                        this._compactMenu["scenes"]["object"].menu.removeAll();
+                    if (this._showScenes && this._compactBridgesMenu[bridgeid]["scenes"] !== undefined) {
+                        this._compactBridgesMenu[bridgeid]["scenes"]["object"].menu.removeAll();
+
+                        this._compactBridgesMenu[bridgeid]["scenes"]["object"].visible = true;
 
                         let scenesItems = this._createMenuLights(
                             bridgeid,
@@ -1602,7 +1649,7 @@ var PhueMenu = GObject.registerClass({
                             "scenes"
                         );
                         for (let sceneItem in scenesItems) {
-                            this._compactMenu["scenes"]["object"].menu.addMenuItem(scenesItems[sceneItem]);
+                            this._compactBridgesMenu[bridgeid]["scenes"]["object"].menu.addMenuItem(scenesItems[sceneItem]);
                         }
                     }
                 }
@@ -1614,14 +1661,39 @@ var PhueMenu = GObject.registerClass({
         return menuItems;
     }
 
+    /**
+     * Creates groups (rooms/zones) menu
+     * for compact menu
+     * 
+     * @method _createCompactMenuGroups
+     * @param {String} bridgeid
+     * @param {Object} data
+     * @return {Object} menu items
+     */
     _createCompactMenuGroups(bridgeid, data) {
         let menuItems = [];
         let items = [];
 
-        this._compactMenu = {};
+        if (this._compactBridgesMenu === undefined) {
+            this._compactBridgesMenu = {};
+        }
+
+        this._compactBridgesMenu[bridgeid] = {};
 
         let groupsSubMenu = new PopupMenu.PopupSubMenuMenuItem(
-            _("Rooms/Zones")
+            _("Rooms & Zones")
+        );
+
+        this._openMenuDefault = groupsSubMenu.menu;
+
+        groupsSubMenu.connect(
+            'button-press-event',
+            () => {
+                this._openMenuDefault = null;
+                if (!groupsSubMenu.menu.isOpen) {
+                    this._openMenuDefault = groupsSubMenu.menu;
+                }
+            }
         );
 
         let groupsIcon = null;
@@ -1637,11 +1709,11 @@ var PhueMenu = GObject.registerClass({
             groupsSubMenu.insert_child_at_index(groupsIcon, 1);
         }
 
-        this._compactMenu["groups"] = {}
-        this._compactMenu["groups"]["object"] = groupsSubMenu;
-        this._compactMenu["groups"]["icon"] = groupsIcon;
-        this._compactMenu["groups"]["switch"] = null;
-        this._compactMenu["selected-group"] = null;
+        this._compactBridgesMenu[bridgeid]["groups"] = {}
+        this._compactBridgesMenu[bridgeid]["groups"]["object"] = groupsSubMenu;
+        this._compactBridgesMenu[bridgeid]["groups"]["icon"] = groupsIcon;
+        this._compactBridgesMenu[bridgeid]["groups"]["switch"] = null;
+        this._compactBridgesMenu[bridgeid]["selected-group"] = null;
 
         menuItems.push(groupsSubMenu);
 
@@ -1668,9 +1740,28 @@ var PhueMenu = GObject.registerClass({
         return menuItems;
     }
 
+    /**
+     * Creates lights menu for compact menu
+     * based on item selected in group menu.
+     * 
+     * @method _createCompactMenuLights
+     * @param {String} bridgeid
+     * @param {Object} data
+     * @return {Object} menu items
+     */
     _createCompactMenuLights(bridgeid, data) {
         let lightsSubMenu = new PopupMenu.PopupSubMenuMenuItem(
             _("Lights")
+        );
+
+        lightsSubMenu.connect(
+            'button-press-event',
+            () => {
+                this._openMenuDefault = null;
+                if (!lightsSubMenu.menu.isOpen) {
+                    this._openMenuDefault = lightsSubMenu.menu;
+                }
+            }
         );
 
         let lightsIcon = null;
@@ -1686,11 +1777,11 @@ var PhueMenu = GObject.registerClass({
             lightsSubMenu.insert_child_at_index(lightsIcon, 1);
         }
 
-        this._compactMenu["lights"] = {};
-        this._compactMenu["lights"]["object"] = lightsSubMenu;
-        this._compactMenu["lights"]["icon"] = lightsIcon;
+        this._compactBridgesMenu[bridgeid]["lights"] = {};
+        this._compactBridgesMenu[bridgeid]["lights"]["object"] = lightsSubMenu;
+        this._compactBridgesMenu[bridgeid]["lights"]["icon"] = lightsIcon;
 
-        if (this._compactMenu["selected-group"] === null) {
+        if (this._compactBridgesMenu[bridgeid]["selected-group"] === null) {
 
             lightsSubMenu.menu.addMenuItem(
                 new PopupMenu.PopupMenuItem(
@@ -1698,10 +1789,12 @@ var PhueMenu = GObject.registerClass({
                 )
             );
 
+            lightsSubMenu.visible = false;
+
             return lightsSubMenu;
         }
 
-        let groupid = this._compactMenu["selected-group"];
+        let groupid = this._compactBridgesMenu[bridgeid]["selected-group"];
 
         let lightItems = this._createMenuLights(
             bridgeid,
@@ -1717,9 +1810,28 @@ var PhueMenu = GObject.registerClass({
         return lightsSubMenu;
     }
 
+    /**
+     * Creates scenes menu for compact menu
+     * based on item selected in group menu.
+     * 
+     * @method _createCompactMenuScenes
+     * @param {String} bridgeid
+     * @param {Object} data
+     * @return {Object} menu items
+     */
     _createCompactMenuScenes(bridgeid, data) {
         let scenesSubMenu = new PopupMenu.PopupSubMenuMenuItem(
             _("Scenes")
+        );
+
+        scenesSubMenu.connect(
+            'button-press-event',
+            () => {
+                this._openMenuDefault = null;
+                if (!scenesSubMenu.menu.isOpen) {
+                    this._openMenuDefault = scenesSubMenu.menu;
+                }
+            }
         );
 
         let scenesIcon = null;
@@ -1735,11 +1847,11 @@ var PhueMenu = GObject.registerClass({
             scenesSubMenu.insert_child_at_index(scenesIcon, 1);
         }
 
-        this._compactMenu["scenes"] = {};
-        this._compactMenu["scenes"]["object"] = scenesSubMenu;
-        this._compactMenu["scenes"]["icon"] = scenesIcon;
+        this._compactBridgesMenu[bridgeid]["scenes"] = {};
+        this._compactBridgesMenu[bridgeid]["scenes"]["object"] = scenesSubMenu;
+        this._compactBridgesMenu[bridgeid]["scenes"]["icon"] = scenesIcon;
 
-        if (this._compactMenu["selected-group"] === null) {
+        if (this._compactBridgesMenu[bridgeid]["selected-group"] === null) {
 
             scenesSubMenu.menu.addMenuItem(
                 new PopupMenu.PopupMenuItem(
@@ -1747,10 +1859,12 @@ var PhueMenu = GObject.registerClass({
                 )
             );
 
+            scenesSubMenu.visible = false;
+
             return scenesSubMenu;
         }
 
-        let groupid = this._compactMenu["selected-group"];
+        let groupid = this._compactBridgesMenu[bridgeid]["selected-group"];
 
         let lightItems = this._createMenuLights(
             bridgeid,
@@ -1793,6 +1907,13 @@ var PhueMenu = GObject.registerClass({
 
             groupItem = new PopupMenu.PopupSubMenuMenuItem(
                 data["groups"][groupid]["name"]
+            );
+
+            groupItem.connect(
+                'button-press-event',
+                () => {
+                    this._openMenuDefault = null;
+                }
             );
 
             groupIcon = this._tryGetGroupIcon(data["groups"][groupid]);
@@ -1859,7 +1980,8 @@ var PhueMenu = GObject.registerClass({
         this.refreshMenuObjects[bridgePath] = {
             "bridgeid": bridgeid,
             "object":switchBox,
-            "type": "switch"
+            "type": "switch",
+            "tmp": false
         }
 
         return switchButton;
@@ -2019,10 +2141,21 @@ var PhueMenu = GObject.registerClass({
             _("Entertainment areas")
         );
 
+        entertainmentMainItem.connect(
+            'button-press-event',
+            () => {
+                this._openMenuDefault = null;
+                if (!entertainmentMainItem.menu.isOpen) {
+                    this._openMenuDefault = entertainmentMainItem.menu;
+                }
+            }
+        );
+
         this.refreshMenuObjects[`special::${bridgeid}::entertainment-label`] = {
             "bridgeid": bridgeid,
             "object": entertainmentMainItem.label,
-            "type": "entertainment-label"
+            "type": "entertainment-label",
+            "tmp": false
         }
 
         if (this._iconPack !== PhueIconPack.NONE) {
@@ -2082,6 +2215,14 @@ var PhueMenu = GObject.registerClass({
         return entertainmentMainItem;
     }
 
+    /**
+     * Creates array of submenus of compact menu for bridge.
+     * 
+     * @method _createCompactMenuBridge
+     * @private
+     * @param {String} bridgeid which bridge we use here
+     * @return {Object} array of bridge label and submenus of the bridge
+     */
     _createCompactMenuBridge(bridgeid) {
         let items = [];
         let data = {};
@@ -2839,11 +2980,25 @@ var PhueMenu = GObject.registerClass({
         }
     }
 
+    /**
+     * Prepare list of bridges shown in the menu.
+     * 
+     * @method getBridgesInMenu
+     * @return {Object} Array of bridges for creating menu.
+     */
     getBridgesInMenu(currentBridges) {
         let bridges = [];
 
-        if (currentBridges.length > 0) {
-            return currentBridges;
+        /* if at least one current bridge is online, don't change */
+        for (let bridgeid of currentBridges) {
+            if (this.hue.instances[bridgeid] === undefined) {
+                continue;
+            }
+
+            if (this.hue.instances[bridgeid].isConnected()){
+                return currentBridges;
+            }
+
         }
 
         let defaultExists = false;
@@ -2883,12 +3038,46 @@ var PhueMenu = GObject.registerClass({
      * or multipe items.
      * 
      * @method _createSettingItems
-     * @param {Boolean} true for multiple items
+     * @param {Boolean} true for reduced number of items
      * @return {Object} array of menu items
      */
-    _createSettingItems(separateItems) {
+    _createSettingItems(reduced) {
         let icon;
         let items = [];
+
+        if (!reduced) {
+            /**
+             * Switch menu
+             */
+            let swichMenuText;
+            if (this._compactMenu) {
+                swichMenuText = _("Switch to standard menu");
+            }
+            if (!this._compactMenu) {
+                swichMenuText = _("Switch to compact menu");
+            }
+            let switchMenuItem = new PopupMenu.PopupMenuItem(
+                swichMenuText
+            );
+
+            if (this._iconPack !== PhueIconPack.NONE) {
+                icon = this._getIconByPath(Me.dir.get_path() + "/media/HueIcons/settingsSoftwareUpdate.svg");
+
+                if (icon !== null){
+                    switchMenuItem.insert_child_at_index(icon, 1);
+                }
+            }
+
+            switchMenuItem.connect(
+                'button-press-event',
+                () => {
+                    this._compactMenu = !this._compactMenu;
+                    this.rebuildMenu();
+                }
+            );
+
+            items.push(switchMenuItem);
+        }
 
         /**
          * Refresh menu item
@@ -2910,7 +3099,7 @@ var PhueMenu = GObject.registerClass({
             () => { this.rebuildMenu(); }
         );
 
-        if (!separateItems) {
+        if (!reduced) {
             let settingsButton = new St.Button({reactive: true, can_focus: true});
             settingsButton.set_x_align(Clutter.ActorAlign.END);
             settingsButton.set_x_expand(true);
@@ -2924,7 +3113,7 @@ var PhueMenu = GObject.registerClass({
 
         items.push(refreshMenuItem);
 
-        if (separateItems) {
+        if (reduced) {
             /**
              * Settings menu item
              */
@@ -2964,6 +3153,7 @@ var PhueMenu = GObject.registerClass({
         let oldItems = this.menu._getMenuItems();
         let instanceCounter = 0;
 
+        this._openMenuDefault = null;
         this.refreshMenuObjects = {};
 
         this.hue.disableAsyncMode();
