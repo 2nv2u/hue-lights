@@ -1259,6 +1259,13 @@ var PhueMenu = GObject.registerClass({
             );
         }
 
+        let label = light.label
+        light.remove_child(light.label);
+        let itemBox = new St.BoxLayout();
+        itemBox.vertical = true;
+        itemBox.add(label);
+        light.insert_child_at_index(itemBox, 1);
+
         light.set_x_align(Clutter.ActorAlign.FILL);
         light.label.set_x_expand(true);
 
@@ -1292,7 +1299,7 @@ var PhueMenu = GObject.registerClass({
             (groupid !== null &&
                 data["groups"][groupid]["action"]["bri"] !== undefined)) {
 
-            light.add(this._createBrightnessSlider(bridgeid, lightid, groupid, true));
+            itemBox.add(this._createBrightnessSlider(bridgeid, lightid, groupid, true));
         }
 
         /**
