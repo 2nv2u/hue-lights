@@ -1050,16 +1050,6 @@ var PhueMenu = GObject.registerClass({
             data["config"]["name"]
         );
 
-        item.connect(
-            'button-press-event',
-            () => {
-                this._openMenuDefault = null;
-                if (!item.menu.isOpen) {
-                    this._openMenuDefault = item.menu;
-                }
-            }
-        );
-
         if (this._iconPack !== PhueIconPack.NONE) {
             switch (data["config"]["modelid"]) {
 
@@ -1941,13 +1931,6 @@ var PhueMenu = GObject.registerClass({
             /* disable closing menu on item activated */
             groupItem.menu.itemActivated = (animate) => {};
 
-            groupItem.connect(
-                'button-press-event',
-                () => {
-                    this._openMenuDefault = null;
-                }
-            );
-
             groupIcon = this._tryGetGroupIcon(data["groups"][groupid]);
             if (groupIcon !== null) {
                 groupItem.insert_child_at_index(groupIcon, 1);
@@ -2171,16 +2154,6 @@ var PhueMenu = GObject.registerClass({
 
         entertainmentMainItem = new PopupMenu.PopupSubMenuMenuItem(
             _("Entertainment areas")
-        );
-
-        entertainmentMainItem.connect(
-            'button-press-event',
-            () => {
-                this._openMenuDefault = null;
-                if (!entertainmentMainItem.menu.isOpen) {
-                    this._openMenuDefault = entertainmentMainItem.menu;
-                }
-            }
         );
 
         this.refreshMenuObjects[`special::${bridgeid}::entertainment-label`] = {
