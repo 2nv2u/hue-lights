@@ -1133,12 +1133,12 @@ var PhueMenu = GObject.registerClass({
      * @param {Number} groupid
      * @return {Object} Brightness slider
      */
-    _createBrightnessSlider(bridgeid, lightid, groupid) {
+    _createBrightnessSlider(bridgeid, lightid, groupid, tmp = false) {
 
         let bridgePath = "";
 
         let slider = new Slider.Slider(0);
-        slider.set_width(200);
+        slider.set_width(150);
         slider.set_x_align(Clutter.ActorAlign.END);
         slider.set_x_expand(false);
         slider.value = 100/254;
@@ -1166,7 +1166,7 @@ var PhueMenu = GObject.registerClass({
             "bridgeid": bridgeid,
             "object":slider,
             "type": "brightness",
-            "tmp": true
+            "tmp": tmp
         }
 
         return slider;
@@ -1289,7 +1289,7 @@ var PhueMenu = GObject.registerClass({
             (groupid !== null &&
                 data["groups"][groupid]["action"]["bri"] !== undefined)) {
 
-            light.add(this._createBrightnessSlider(bridgeid, lightid, groupid));
+            light.add(this._createBrightnessSlider(bridgeid, lightid, groupid, true));
         }
 
         /**
@@ -1497,6 +1497,8 @@ var PhueMenu = GObject.registerClass({
             icon = new St.Icon({
                 gicon : Gio.icon_new_for_string(iconPath),
                 style_class : 'system-status-icon',
+                y_expand: false,
+                y_align: Clutter.ActorAlign.CENTER
             });
 
             icon.set_size(IconSize, IconSize);
@@ -1569,6 +1571,14 @@ var PhueMenu = GObject.registerClass({
             groupItem = new PopupMenu.PopupMenuItem(
                 data["groups"][groupid]["name"]
             );
+
+            let label = groupItem.label
+            groupItem.remove_child(groupItem.label);
+            let itemBox = new St.BoxLayout();
+            itemBox.vertical = true;
+            itemBox.add(label);
+            itemBox.add(this._createBrightnessSlider(bridgeid, null, groupid));
+            groupItem.insert_child_at_index(itemBox, 1);
 
             groupIcon = this._tryGetGroupIcon(data["groups"][groupid]);
             if (groupIcon !== null) {
