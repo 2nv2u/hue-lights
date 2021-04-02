@@ -1666,6 +1666,9 @@ var PhueMenu = GObject.registerClass({
                     /* ask for async all data,
                     * which will invoke refreshMenu*/
                     this.hue.instances[bridgeid].getAll();
+
+                    this._openMenuDefault = this._compactBridgesMenu[bridgeid]["lights"]["object"].menu;
+                    this._openMenuDefault.open(false);
                 }
             );
 
