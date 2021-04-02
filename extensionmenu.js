@@ -1662,6 +1662,10 @@ var PhueMenu = GObject.registerClass({
                             this._compactBridgesMenu[bridgeid]["scenes"]["object"].menu.addMenuItem(scenesItems[sceneItem]);
                         }
                     }
+
+                    /* ask for async all data,
+                    * which will invoke refreshMenu*/
+                    this.hue.instances[bridgeid].getAll();
                 }
             );
 
