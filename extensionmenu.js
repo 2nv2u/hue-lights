@@ -3099,43 +3099,28 @@ var PhueMenu = GObject.registerClass({
             () => { this.rebuildMenu(); }
         );
 
-        if (!reduced) {
-            let settingsButton = new St.Button({reactive: true, can_focus: true});
-            settingsButton.set_x_align(Clutter.ActorAlign.END);
-            settingsButton.set_x_expand(true);
-            settingsButton.child = this._getIconByPath(Me.dir.get_path() + "/media/HueIcons/tabbarSettings.svg");
-            settingsButton.connect(
-                'button-press-event',
-                () => {Util.spawn(["gnome-shell-extension-prefs", Me.uuid]);}
-            );
-            refreshMenuItem.add_child(settingsButton);
-        }
-
         items.push(refreshMenuItem);
 
-        if (reduced) {
-            /**
-             * Settings menu item
-             */
+        /**
+         * Settings menu item
+         */
+        let prefsMenuItem = new PopupMenu.PopupMenuItem(
+            _("Settings")
+        );
 
-            let prefsMenuItem = new PopupMenu.PopupMenuItem(
-                _("Settings")
-            );
+        if (this._iconPack !== PhueIconPack.NONE) {
+            icon = this._getIconByPath(Me.dir.get_path() + "/media/HueIcons/tabbarSettings.svg");
 
-            if (this._iconPack !== PhueIconPack.NONE) {
-                icon = this._getIconByPath(Me.dir.get_path() + "/media/HueIcons/tabbarSettings.svg");
-
-                if (icon !== null) {
-                    prefsMenuItem.insert_child_at_index(icon, 1);
-                }
+            if (icon !== null) {
+                prefsMenuItem.insert_child_at_index(icon, 1);
             }
-
-            prefsMenuItem.connect(
-                'button-press-event',
-                () => {Util.spawn(["gnome-shell-extension-prefs", Me.uuid]);}
-            );
-            items.push(prefsMenuItem);
         }
+
+        prefsMenuItem.connect(
+            'button-press-event',
+            () => {Util.spawn(["gnome-shell-extension-prefs", Me.uuid]);}
+        );
+        items.push(prefsMenuItem);
 
         return items;
     }
