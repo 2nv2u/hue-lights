@@ -619,6 +619,9 @@ var PhueMenu = GObject.registerClass({
 
             case "color-picker":
 
+                /* close the main manu */
+                this.menu.close(false);
+
                 if (this.colorPicker !== null) {
                     this.colorPicker.destroy();
                 }
@@ -1694,6 +1697,9 @@ var PhueMenu = GObject.registerClass({
             _("Rooms & Zones")
         );
 
+        /* disable closing menu on item activated */
+        groupsSubMenu.menu.itemActivated = (animate) => {};
+
         this._openMenuDefault = groupsSubMenu.menu;
 
         groupsSubMenu.connect(
@@ -1764,6 +1770,9 @@ var PhueMenu = GObject.registerClass({
             _("Lights")
         );
 
+        /* disable closing menu on item activated */
+        lightsSubMenu.menu.itemActivated = (animate) => {};
+
         lightsSubMenu.connect(
             'button-press-event',
             () => {
@@ -1833,6 +1842,9 @@ var PhueMenu = GObject.registerClass({
         let scenesSubMenu = new PopupMenu.PopupSubMenuMenuItem(
             _("Scenes")
         );
+
+        /* disable closing menu on item activated */
+        scenesSubMenu.menu.itemActivated = (animate) => {};
 
         scenesSubMenu.connect(
             'button-press-event',
@@ -1918,6 +1930,9 @@ var PhueMenu = GObject.registerClass({
             groupItem = new PopupMenu.PopupSubMenuMenuItem(
                 data["groups"][groupid]["name"]
             );
+
+            /* disable closing menu on item activated */
+            groupItem.menu.itemActivated = (animate) => {};
 
             groupItem.connect(
                 'button-press-event',
