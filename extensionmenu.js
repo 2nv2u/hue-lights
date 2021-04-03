@@ -1738,6 +1738,8 @@ var PhueMenu = GObject.registerClass({
                         }
                     }
 
+                    this._compactBridgesMenu[bridgeid]["control"]["object"].visible = false;
+
                     /* ask for async all data,
                     * which will invoke refreshMenu*/
                     this.hue.instances[bridgeid].getAll();
