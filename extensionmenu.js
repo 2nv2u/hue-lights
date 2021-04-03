@@ -1132,7 +1132,7 @@ var PhueMenu = GObject.registerClass({
 
         let slider = new Slider.Slider(0);
         slider.set_width(150);
-        slider.set_x_align(Clutter.ActorAlign.END);
+        slider.set_x_align(Clutter.ActorAlign.START);
         slider.set_x_expand(false);
         slider.value = 100/254;
 
@@ -1673,6 +1673,16 @@ var PhueMenu = GObject.registerClass({
                         );
                     }
 
+                    if (this._compactBridgesMenu[bridgeid]["groups"]["slider"] != null){
+                        this._compactBridgesMenu[bridgeid]["groups"]["box"].remove_child(
+                            this._compactBridgesMenu[bridgeid]["groups"]["slider"]
+                        );
+                    }
+
+                    let groupSlider = this._createBrightnessSlider(bridgeid, null, groupid, true);
+                    this._compactBridgesMenu[bridgeid]["groups"]["box"].insert_child_at_index(groupSlider, 1);
+                    this._compactBridgesMenu[bridgeid]["groups"]["slider"] = groupSlider;
+
                     groupIcon = this._tryGetGroupIcon(data["groups"][groupid]);
 
                     if (groupIcon !== null) {
@@ -1755,6 +1765,13 @@ var PhueMenu = GObject.registerClass({
             _("Rooms & Zones")
         );
 
+        let label = groupsSubMenu.label
+        groupsSubMenu.remove_child(groupsSubMenu.label);
+        let itemBox = new St.BoxLayout();
+        itemBox.vertical = true;
+        itemBox.add(label);
+        groupsSubMenu.insert_child_at_index(itemBox, 1);
+
         /* disable closing menu on item activated */
         groupsSubMenu.menu.itemActivated = (animate) => {};
 
@@ -1787,6 +1804,8 @@ var PhueMenu = GObject.registerClass({
         this._compactBridgesMenu[bridgeid]["groups"]["object"] = groupsSubMenu;
         this._compactBridgesMenu[bridgeid]["groups"]["icon"] = groupsIcon;
         this._compactBridgesMenu[bridgeid]["groups"]["switch"] = null;
+        this._compactBridgesMenu[bridgeid]["groups"]["box"] = itemBox;
+        this._compactBridgesMenu[bridgeid]["groups"]["slider"] = null;
         this._compactBridgesMenu[bridgeid]["selected-group"] = null;
         this._compactBridgesMenu[bridgeid]["selected-light"] = null;
 
