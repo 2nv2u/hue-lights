@@ -1686,7 +1686,7 @@ var PhueMenu = GObject.registerClass({
             );
         }
 
-        this._compactBridgesMenu[bridgeid]["lights"]["object"].label.text = _("All lights");
+        this._compactBridgesMenu[bridgeid]["lights"]["object"].label.text = _("Lights");
 
         let groupSwitch = this._createLightSwitch(bridgeid, null, groupid);
         this._compactBridgesMenu[bridgeid]["lights"]["object"].add(groupSwitch);
@@ -1934,7 +1934,7 @@ var PhueMenu = GObject.registerClass({
                     this._compactBridgesMenu[bridgeid]["groups"]["switch"] = groupSwitch;
 
                     /* lights */
-                    this._compactBridgesMenu[bridgeid]["lights"]["object"].label.text = _("All lights");
+                    this._compactBridgesMenu[bridgeid]["lights"]["object"].label.text = _("Lights");
 
                     if (this._compactBridgesMenu[bridgeid]["lights"]["switch"] != null){
                         this._compactBridgesMenu[bridgeid]["lights"]["object"].remove_child(
