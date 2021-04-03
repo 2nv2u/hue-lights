@@ -1335,9 +1335,12 @@ var PhueMenu = GObject.registerClass({
                 }
             );
 
+            light.originalActivate = light.activate;
             light.activate = (event) => {
                 this._openMenuDefault = this._compactBridgesMenu[bridgeid]["control"]["object"].menu;
                 this._openMenuDefault.open(false);
+
+                return light.originalActivate(event);
             }
         }
 
@@ -1741,9 +1744,12 @@ var PhueMenu = GObject.registerClass({
                 }
             );
 
+            groupItem.originalActivate = groupItem.activate;
             groupItem.activate = (event) => {
                 this._openMenuDefault = this._compactBridgesMenu[bridgeid]["lights"]["object"].menu;
                 this._openMenuDefault.open(false);
+
+                return groupItem.originalActivate(event);
             }
 
             menuItems.push(groupItem);
