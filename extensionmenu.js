@@ -1796,6 +1796,13 @@ var PhueMenu = GObject.registerClass({
             items = items.concat(
                 this._createCompactGroups(bridgeid, data, "Zone")
             );
+
+            if (items.length > 0) {
+                items = items.concat(
+                    [new PopupMenu.PopupSeparatorMenuItem()]
+                );
+            }
+
             items = items.concat(
                 this._createCompactGroups(bridgeid, data, "Room")
             );
@@ -1803,6 +1810,13 @@ var PhueMenu = GObject.registerClass({
             items = items.concat(
                 this._createCompactGroups(bridgeid, data, "Room")
             );
+
+            if (items.length > 0) {
+                items = items.concat(
+                    [new PopupMenu.PopupSeparatorMenuItem()]
+                );
+            }
+
             items = items.concat(
                 this._createCompactGroups(bridgeid, data, "Zone")
             );
