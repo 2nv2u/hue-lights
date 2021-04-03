@@ -1334,6 +1334,11 @@ var PhueMenu = GObject.registerClass({
                     this._compactBridgesMenu[bridgeid]["control"]["object"].menu.addMenuItem(controlItem);
                 }
             );
+
+            light.activate = (event) => {
+                this._openMenuDefault = this._compactBridgesMenu[bridgeid]["control"]["object"].menu;
+                this._openMenuDefault.open(false);
+            }
         }
 
         /**
@@ -1735,6 +1740,11 @@ var PhueMenu = GObject.registerClass({
                     this.hue.instances[bridgeid].getAll();
                 }
             );
+
+            groupItem.activate = (event) => {
+                this._openMenuDefault = this._compactBridgesMenu[bridgeid]["lights"]["object"].menu;
+                this._openMenuDefault.open(false);
+            }
 
             menuItems.push(groupItem);
         }
