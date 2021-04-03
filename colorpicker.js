@@ -71,52 +71,35 @@ const whiteShades = [
     ]
 
 /**
- * ColorPicker class. Modal dialog for selecting colour.
+ * ColorPickerBox class. Creates BoxLayout with color wheel.
  * 
  * @class ColorPicker
  * @constructor
- * @return {Object} modal dialog instance
+ * @return {Object} object
  */
-var ColorPicker =  GObject.registerClass({
-    GTypeName: "ColorPicker",
+var ColorPickerBox =  GObject.registerClass({
+    GTypeName: "ColorPickerBox",
     Signals: {
-        'opened': {},
-        'closed': {},
         'color-picked': {},
         'brightness-picked': {},
-        'finish': {}
     }
-}, class ColorPicker extends ModalDialog.ModalDialog {
+}, class ColorPickerBox extends GObject.Object {
 
     /**
-     * ColorPicker class initialization
-     *  
+     * ColorPickerBox class initialization
+     * 
      * @method _init
      * @private
      */
     _init(params = {}) {
         super._init();
 
-        this._dialogLayout = typeof this.dialogLayout === "undefined"
-            ? this._dialogLayout
-            : this.dialogLayout;
-
         this.slider = null;
         this.switchWhite = null;
         this.colorTemperature = 0;
-        this.pickedcolor = 0;
         this.r = 0;
         this.g = 0;
         this.b = 0;
-
-        this.setButtons([{
-            label: _("Finish"),
-            action: Lang.bind(this, this._colorPickedFinish),
-            key: Clutter.Escape
-        }]);
-
-        this.contentLayout.add(this._createMainBox());
-        this.brightness = this.slider;
     }
 
     /**
@@ -135,11 +118,10 @@ var ColorPicker =  GObject.registerClass({
     /**
      * Create main box with content
      * 
-     * @method _createMainBox
-     * @private
+     * @method createColorBox
      * @return {object} main box as BoxLayout
      */
-    _createMainBox() {
+     createColorBox() {
 
         let box;
         let label;
@@ -223,6 +205,7 @@ var ColorPicker =  GObject.registerClass({
 
         return mainbox;
     }
+
     /**
      * Create collored button
      *  
@@ -248,29 +231,6 @@ var ColorPicker =  GObject.registerClass({
         return colorButton;
     }
 
-    /**
-     * Relocate modal dialog
-     *
-     * @method newPosition
-     */
-    newPosition() {
-
-        let width_percents = 100;
-        let height_percents = 100;
-        let primary = Main.layoutManager.primaryMonitor;
-
-        let translator_width = Math.round(
-            (primary.width / 100) * width_percents
-        );
-        let translator_height = Math.round(
-            (primary.height / 100) * height_percents
-        );
-
-        let help_width = Math.round(translator_width * 1);
-        let help_height = Math.round(translator_height * 1);
-        this._dialogLayout.set_width(help_width);
-        this._dialogLayout.set_height(help_height);
-    }
 
     /**
      * Handler for picking colour emits 'color-picked'
@@ -280,12 +240,10 @@ var ColorPicker =  GObject.registerClass({
      * @param {Number} selected color
      * @param {Boolean} true if temperature of white
      */
-    _colorPickedEvent(rgb, colorTemperature) {
+     _colorPickedEvent(rgb, colorTemperature) {
 
         this.colorTemperature = colorTemperature;
-        this.pickedcolor = rgb;
-        /*let rgb = this.colorToRGB(color);*/
-
+        this.isWhiteTemperature = this.switchWhite.state;
         this.r = rgb[0];
         this.g = rgb[1];
         this.b = rgb[2];
@@ -294,7 +252,7 @@ var ColorPicker =  GObject.registerClass({
     }
 
     /**
-     * Handler for picking brightness emits 'brightness-picked'
+     * Handler for picking brightness emrgbToHexStrits 'brightness-picked'
      *  
      * @method _brightnessEvent
      * @private
@@ -306,19 +264,6 @@ var ColorPicker =  GObject.registerClass({
         this.emit("brightness-picked");
     }
 
-    /**
-     * OK button hides the dialog.
-     *  
-     * @method _onClose
-     * @private
-     * @param {object}
-     * @param {object}
-     */
-    _colorPickedFinish() {
-
-        this.emit("finish");
-        this.destroy();
-    }
 
     /**
      * Converts colour value to RGB
@@ -356,4 +301,114 @@ var ColorPicker =  GObject.registerClass({
 
         return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
     }
+})
+
+/**
+ * ColorPicker class. Modal dialog for selecting colour.
+ * 
+ * @class ColorPicker
+ * @constructor
+ * @return {Object} modal dialog instance
+ */
+var ColorPicker =  GObject.registerClass({
+    GTypeName: "ColorPicker",
+    Signals: {
+        'opened': {},
+        'closed': {},
+        'color-picked': {},
+        'brightness-picked': {},
+        'finish': {}
+    }
+}, class ColorPicker extends ModalDialog.ModalDialog {
+
+    /**
+     * ColorPicker class initialization
+     * 
+     * @method _init
+     * @private
+     */
+    _init(params = {}) {
+        super._init();
+
+        this._dialogLayout = typeof this.dialogLayout === "undefined"
+            ? this._dialogLayout
+            : this.dialogLayout;
+
+        this.isWhiteTemperature = null;
+        this.colorTemperature = 0;
+        this.r = 0;
+        this.g = 0;
+        this.b = 0;
+
+        this.setButtons([{
+            label: _("Finish"),
+            action: Lang.bind(this, this._colorPickedFinish),
+            key: Clutter.Escape
+        }]);
+
+        this.colorPickerBox = new ColorPickerBox();
+
+        this.colorPickerBox.connect(
+            "color-picked",
+            () => {
+                this.colorTemperature = this.colorPickerBox.colorTemperature;
+                this.isWhiteTemperature = this.colorPickerBox.switchWhite.state;
+                this.r = this.colorPickerBox.r;
+                this.g = this.colorPickerBox.g;
+                this.b = this.colorPickerBox.b;
+
+                this.emit("color-picked");
+            }
+        );
+
+        this.colorPickerBox.connect(
+            "brightness-picked",
+            () => {
+                this.brightness = this.colorPickerBox.slider;
+
+                this.emit("brightness-picked");
+            }
+        );
+
+        this.contentLayout.add(this.colorPickerBox.createColorBox());
+    }
+
+    /**
+     * Relocate modal dialog
+     *
+     * @method newPosition
+     */
+    newPosition() {
+
+        let width_percents = 100;
+        let height_percents = 100;
+        let primary = Main.layoutManager.primaryMonitor;
+
+        let translator_width = Math.round(
+            (primary.width / 100) * width_percents
+        );
+        let translator_height = Math.round(
+            (primary.height / 100) * height_percents
+        );
+
+        let help_width = Math.round(translator_width * 1);
+        let help_height = Math.round(translator_height * 1);
+        this._dialogLayout.set_width(help_width);
+        this._dialogLayout.set_height(help_height);
+    }
+
+    /**
+     * OK button hides the dialog.
+     * 
+     * @method _onClose
+     * @private
+     * @param {object}
+     * @param {object}
+     */
+    _colorPickedFinish() {
+
+        this.emit("finish");
+        this.destroy();
+    }
+
 });
