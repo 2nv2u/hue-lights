@@ -1166,7 +1166,7 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
-     * Creates switch button for torning the light on/off
+     * Creates switch button for turning the light on/off
      * 
      * @method _createLightSwitch
      * @param {String} bridgeid
@@ -1295,8 +1295,6 @@ var PhueMenu = GObject.registerClass({
 
                     this._compactBridgesMenu[bridgeid]["control"]["object"].menu.removeAll();
 
-                    this._compactBridgesMenu[bridgeid]["control"]["object"].visible = true;
-
                     let controlItem = new PopupMenu.PopupMenuItem(
                         _("None")
                     )
@@ -1338,7 +1336,7 @@ var PhueMenu = GObject.registerClass({
             light.originalActivate = light.activate;
             light.activate = (event) => {
                 this._openMenuDefault = this._compactBridgesMenu[bridgeid]["control"]["object"].menu;
-                this._openMenuDefault.open(false);
+                this._openMenuDefault.open(true);
 
                 return light.originalActivate(event);
             }
@@ -1432,14 +1430,18 @@ var PhueMenu = GObject.registerClass({
         }
 
         if (compact !== "scenes") {
-            light = this._createItemLight(
-                bridgeid,
-                data,
-                lights,
-                groupid,
-                compact === "lights" ? true : false
-            );
-            lightsItems.push(light);
+
+            if (compact === null) {
+                /*  do not add "All" item in compcat menu */
+                light = this._createItemLight(
+                    bridgeid,
+                    data,
+                    lights,
+                    groupid,
+                    compact === "lights" ? true : false
+                );
+                lightsItems.push(light);
+            }
 
             for (let lightid in lights) {
                 light = this._createItemLight(
@@ -1608,6 +1610,240 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
+     * Using compact menu, this function will set
+     * the group menu to default group 0
+     * 
+     * @method _setCompactMenuZeroGroup
+     * @param {String} bridgeid
+     */
+    _setCompactMenuZeroGroup(bridgeid) {
+
+        if (this._compactBridgesMenu[bridgeid]["groups"]["icon"] != null){
+            this._compactBridgesMenu[bridgeid]["groups"]["object"].remove_child(
+                this._compactBridgesMenu[bridgeid]["groups"]["icon"]
+            );
+        }
+
+        if (this._compactBridgesMenu[bridgeid]["groups"]["switch"] != null){
+            this._compactBridgesMenu[bridgeid]["groups"]["object"].remove_child(
+                this._compactBridgesMenu[bridgeid]["groups"]["switch"]
+            );
+        }
+
+        if (this._compactBridgesMenu[bridgeid]["groups"]["slider"] != null){
+            this._compactBridgesMenu[bridgeid]["groups"]["box"].remove_child(
+                this._compactBridgesMenu[bridgeid]["groups"]["slider"]
+            );
+        }
+
+        this._compactBridgesMenu[bridgeid]["groups"]["object"].label.text = _("Rooms & Zones");
+        
+        let groupsIcon = null;
+        if (this._iconPack !== PhueIconPack.NONE) {
+            let iconPath = "";
+
+            iconPath = Me.dir.get_path() + `/media/HueIcons/roomsOther.svg`
+
+            groupsIcon = this._getIconByPath(iconPath);
+        }
+
+        if (groupsIcon !== null) {
+            this._compactBridgesMenu[bridgeid]["groups"]["object"].insert_child_at_index(groupsIcon, 1);
+        }
+
+        let groupSlider = this._createBrightnessSlider(bridgeid, null, 0, true);
+        this._compactBridgesMenu[bridgeid]["groups"]["box"].add(groupSlider);
+        
+        let groupSwitch = this._createGroupSwitch(bridgeid, 0, true);
+        this._compactBridgesMenu[bridgeid]["groups"]["object"].add(groupSwitch);
+
+        this._compactBridgesMenu[bridgeid]["groups"]["icon"] = groupsIcon;
+        this._compactBridgesMenu[bridgeid]["groups"]["switch"] = groupSwitch;
+        this._compactBridgesMenu[bridgeid]["groups"]["slider"] = groupSlider;
+    }
+
+    /**
+     * Using compact menu, this function will set
+     * the lights menu to default group 0
+     * 
+     * @method _setCompactMenuZeroLights
+     * @param {String} bridgeid
+     * @param {Object} data wor creating lights
+     */
+    _setCompactMenuZeroLights(bridgeid, data) {
+
+        let groupid = 0;
+
+        if (this._compactBridgesMenu[bridgeid]["lights"]["switch"] != null){
+            this._compactBridgesMenu[bridgeid]["lights"]["object"].remove_child(
+                this._compactBridgesMenu[bridgeid]["lights"]["switch"]
+            );
+        }
+
+        if (this._compactBridgesMenu[bridgeid]["lights"]["slider"] != null){
+            this._compactBridgesMenu[bridgeid]["lights"]["box"].remove_child(
+                this._compactBridgesMenu[bridgeid]["lights"]["slider"]
+            );
+        }
+
+        this._compactBridgesMenu[bridgeid]["lights"]["object"].label.text = _("All lights");
+
+        let groupSwitch = this._createLightSwitch(bridgeid, null, groupid);
+        this._compactBridgesMenu[bridgeid]["lights"]["object"].add(groupSwitch);
+
+        this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.removeAll();
+
+        let lightItems = this._createMenuLights(
+            bridgeid,
+            data,
+            data["groups"][groupid]["lights"],
+            groupid,
+            "lights"
+        );
+
+        for (let lightItem in lightItems) {
+            this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.addMenuItem(
+                lightItems[lightItem]
+            );
+        }
+
+        this._compactBridgesMenu[bridgeid]["lights"]["switch"] = groupSwitch;
+    }
+
+    /**
+     * Using compact menu, this function will set
+     * the control menu to desired group.
+     * 
+     * @method _setCompactMenuGroupControl
+     * @param {String} bridgeid
+     * @param {Number} groupid
+     */
+    _setCompactMenuGroupControl(bridgeid, groupid) {
+
+        this._compactBridgesMenu[bridgeid]["control"]["object"].menu.removeAll();
+
+        this._compactBridgesMenu[bridgeid]["control"]["object"].label.text = _("Control");
+
+        let controlItem = new PopupMenu.PopupMenuItem(
+            _("None")
+        )
+
+        controlItem.remove_child(controlItem.label);
+
+        let colorPickerBox = new ColorPicker.ColorPickerBox();
+        controlItem.add(colorPickerBox.createColorBox());
+
+        let bridgePath = `${this._rndID()}::groups::${groupid}::action::hue`;
+
+        this.colorPicker = colorPickerBox;
+
+        let dataColor = {
+            "bridgeid": bridgeid,
+            "bridgePath": bridgePath,
+            "type": "set-color"
+        }
+
+        colorPickerBox.connect(
+            "color-picked",
+                this._menuEventHandler.bind(this, dataColor)
+        );
+
+        let dataBrightness = {
+            "bridgeid": bridgeid,
+            "bridgePath": bridgePath,
+            "type": "brightness-colorpicker"
+        }
+
+        colorPickerBox.connect(
+            "brightness-picked",
+            this._menuEventHandler.bind(this, dataBrightness)
+        );
+
+        this._compactBridgesMenu[bridgeid]["control"]["object"].menu.addMenuItem(controlItem);
+    }
+
+    /**
+     * Using compact menu, this function will set
+     * the control menu to the group 0.
+     * 
+     * @method _setCompactMenuZeroControl
+     * @param {String} bridgeid
+     */
+    _setCompactMenuZeroControl(bridgeid) {
+        this._setCompactMenuGroupControl(bridgeid, 0);
+    }
+
+    /**
+     * Creates zero item - 'back to Rooms and zones' button
+     * 
+     * @method _compactMenuCreateZeroItem
+     * @param {String} bridgeid
+     */
+    _compactMenuCreateZeroItem(bridgeid) {
+
+        let zeroItem = new PopupMenu.PopupMenuItem(
+            _("Back to Rooms & Zones")
+        );
+
+        zeroItem.x_align = Clutter.ActorAlign.FILL;
+        zeroItem.x_expand = true;
+        zeroItem.label.x_align = Clutter.ActorAlign.CENTER;
+        zeroItem.label.set_x_expand(true);
+
+        zeroItem.connect (
+            'button-press-event',
+            () => {
+                this._compactMenuClearTmpObjects(bridgeid);
+
+                this._setCompactMenuZeroGroup(bridgeid);
+                this._setCompactMenuZeroLights(bridgeid, this.bridesData[bridgeid]);
+                this._setCompactMenuZeroControl(bridgeid);
+
+                /**
+                 * ask for async all data,
+                 * which will invoke refreshMenu
+                 */
+                this.hue.instances[bridgeid].getAll();
+            }
+        );
+
+        zeroItem.originalActivate = zeroItem.activate;
+        zeroItem.activate = (event) => {
+            this._openMenuDefault = this._compactBridgesMenu[bridgeid]["groups"]["object"].menu;
+            this._openMenuDefault.open(true);
+
+            this._compactBridgesMenu[bridgeid]["zero"].visible = false;
+            this._compactBridgesMenu[bridgeid]["scenes"]["object"].visible = false;
+
+            return zeroItem.originalActivate(event);
+        }
+
+        zeroItem.visible = false;
+        this._compactBridgesMenu[bridgeid]["zero"] = zeroItem;
+
+        return zeroItem;
+    }
+
+    /**
+     * Clear tmp items in refresh list.
+     * So destroyed items will not be attempted
+     * to be refreshed.
+     * 
+     * @method _compactMenuClearTmpObjects
+     * @param {String} bridgeid
+     */
+    _compactMenuClearTmpObjects(bridgeid) {
+        /* remove previously created object from refreshing */
+        for (let i in this.refreshMenuObjects) {
+            if (this.refreshMenuObjects[i]["tmp"] &&
+                this.refreshMenuObjects[i]["bridgeid"] === bridgeid) {
+
+                delete (this.refreshMenuObjects[i]);
+            }
+        }
+    }
+
+    /**
      * Creates items of groups for compact menu,
      * also adds callbe for such a item. In this
      * callback the top-menu item is modified
@@ -1660,14 +1896,7 @@ var PhueMenu = GObject.registerClass({
                 () => {
                     this._compactBridgesMenu[bridgeid]["selected-group"] = groupid;
 
-                    /* remove previously created object from refreshing */
-                    for (let i in this.refreshMenuObjects) {
-                        if (this.refreshMenuObjects[i]["tmp"] &&
-                            this.refreshMenuObjects[i]["bridgeid"] === bridgeid) {
-
-                            delete (this.refreshMenuObjects[i]);
-                        }
-                    }
+                    this._compactMenuClearTmpObjects(bridgeid);
 
                     if (this._compactBridgesMenu[bridgeid]["groups"]["icon"] != null){
                         this._compactBridgesMenu[bridgeid]["groups"]["object"].remove_child(
@@ -1705,9 +1934,19 @@ var PhueMenu = GObject.registerClass({
                     this._compactBridgesMenu[bridgeid]["groups"]["switch"] = groupSwitch;
 
                     /* lights */
-                    this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.removeAll();
+                    this._compactBridgesMenu[bridgeid]["lights"]["object"].label.text = _("All lights");
 
-                    this._compactBridgesMenu[bridgeid]["lights"]["object"].visible = true;
+                    if (this._compactBridgesMenu[bridgeid]["lights"]["switch"] != null){
+                        this._compactBridgesMenu[bridgeid]["lights"]["object"].remove_child(
+                            this._compactBridgesMenu[bridgeid]["lights"]["switch"]
+                        );
+                    }
+
+                    groupSwitch = this._createLightSwitch(bridgeid, null, groupid);
+                    this._compactBridgesMenu[bridgeid]["lights"]["object"].add(groupSwitch);
+                    this._compactBridgesMenu[bridgeid]["lights"]["switch"] = groupSwitch;
+
+                    this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.removeAll();
 
                     let lightItems = this._createMenuLights(
                         bridgeid,
@@ -1738,10 +1977,13 @@ var PhueMenu = GObject.registerClass({
                         }
                     }
 
-                    this._compactBridgesMenu[bridgeid]["control"]["object"].visible = false;
+                    /* control */
+                    this._setCompactMenuGroupControl(bridgeid, groupid);
 
-                    /* ask for async all data,
-                    * which will invoke refreshMenu*/
+                    /**
+                     * ask for async all data,
+                     * which will invoke refreshMenu
+                     */
                     this.hue.instances[bridgeid].getAll();
                 }
             );
@@ -1749,7 +1991,9 @@ var PhueMenu = GObject.registerClass({
             groupItem.originalActivate = groupItem.activate;
             groupItem.activate = (event) => {
                 this._openMenuDefault = this._compactBridgesMenu[bridgeid]["lights"]["object"].menu;
-                this._openMenuDefault.open(false);
+                this._openMenuDefault.open(true);
+
+                this._compactBridgesMenu[bridgeid]["zero"].visible = true;
 
                 return groupItem.originalActivate(event);
             }
@@ -1783,27 +2027,15 @@ var PhueMenu = GObject.registerClass({
             _("Rooms & Zones")
         );
 
+        /* disable closing menu on item activated */
+        groupsSubMenu.menu.itemActivated = (animate) => {};
+
         let label = groupsSubMenu.label
         groupsSubMenu.remove_child(groupsSubMenu.label);
         let itemBox = new St.BoxLayout();
         itemBox.vertical = true;
         itemBox.add(label);
         groupsSubMenu.insert_child_at_index(itemBox, 1);
-
-        /* disable closing menu on item activated */
-        groupsSubMenu.menu.itemActivated = (animate) => {};
-
-        this._openMenuDefault = groupsSubMenu.menu;
-
-        groupsSubMenu.connect(
-            'button-press-event',
-            () => {
-                this._openMenuDefault = null;
-                if (!groupsSubMenu.menu.isOpen) {
-                    this._openMenuDefault = groupsSubMenu.menu;
-                }
-            }
-        );
 
         let groupsIcon = null;
         if (this._iconPack !== PhueIconPack.NONE) {
@@ -1821,13 +2053,29 @@ var PhueMenu = GObject.registerClass({
         this._compactBridgesMenu[bridgeid]["groups"] = {}
         this._compactBridgesMenu[bridgeid]["groups"]["object"] = groupsSubMenu;
         this._compactBridgesMenu[bridgeid]["groups"]["icon"] = groupsIcon;
-        this._compactBridgesMenu[bridgeid]["groups"]["switch"] = null;
         this._compactBridgesMenu[bridgeid]["groups"]["box"] = itemBox;
+        this._compactBridgesMenu[bridgeid]["groups"]["switch"] = null;
         this._compactBridgesMenu[bridgeid]["groups"]["slider"] = null;
         this._compactBridgesMenu[bridgeid]["selected-group"] = null;
         this._compactBridgesMenu[bridgeid]["selected-light"] = null;
 
+        this._setCompactMenuZeroGroup(bridgeid);
+
+        this._openMenuDefault = groupsSubMenu.menu;
+
+        groupsSubMenu.connect(
+            'button-press-event',
+            () => {
+                this._openMenuDefault = null;
+                if (!groupsSubMenu.menu.isOpen) {
+                    this._openMenuDefault = groupsSubMenu.menu;
+                }
+            }
+        );
+
         menuItems.push(groupsSubMenu);
+
+        groupsSubMenu.menu.addMenuItem(this._compactMenuCreateZeroItem(bridgeid));
 
         if (this._zonesFirst) {
             items = items.concat(
@@ -1863,6 +2111,8 @@ var PhueMenu = GObject.registerClass({
             groupsSubMenu.menu.addMenuItem(items[i]);
         }
 
+        this._openMenuDefault = this._compactBridgesMenu[bridgeid]["groups"]["object"].menu;
+
         return menuItems;
     }
 
@@ -1883,12 +2133,26 @@ var PhueMenu = GObject.registerClass({
         /* disable closing menu on item activated */
         lightsSubMenu.menu.itemActivated = (animate) => {};
 
+        let label = lightsSubMenu.label
+        lightsSubMenu.remove_child(lightsSubMenu.label);
+        let itemBox = new St.BoxLayout();
+        itemBox.vertical = true;
+        itemBox.add(label);
+        lightsSubMenu.insert_child_at_index(itemBox, 1);
+
         lightsSubMenu.connect(
             'button-press-event',
             () => {
                 this._openMenuDefault = null;
                 if (!lightsSubMenu.menu.isOpen) {
                     this._openMenuDefault = lightsSubMenu.menu;
+                }
+
+                if (this._compactBridgesMenu[bridgeid]["selected-group"] !== null) {
+                    this._setCompactMenuGroupControl(
+                        bridgeid,
+                        this._compactBridgesMenu[bridgeid]["selected-group"]
+                    );
                 }
             }
         );
@@ -1909,32 +2173,11 @@ var PhueMenu = GObject.registerClass({
         this._compactBridgesMenu[bridgeid]["lights"] = {};
         this._compactBridgesMenu[bridgeid]["lights"]["object"] = lightsSubMenu;
         this._compactBridgesMenu[bridgeid]["lights"]["icon"] = lightsIcon;
+        this._compactBridgesMenu[bridgeid]["lights"]["box"] = itemBox;
+        this._compactBridgesMenu[bridgeid]["lights"]["switch"] = null;
+        this._compactBridgesMenu[bridgeid]["lights"]["slider"] = null;
 
-        if (this._compactBridgesMenu[bridgeid]["selected-group"] === null) {
-
-            lightsSubMenu.menu.addMenuItem(
-                new PopupMenu.PopupMenuItem(
-                    _("No room/zone selected")
-                )
-            );
-
-            lightsSubMenu.visible = false;
-
-            return lightsSubMenu;
-        }
-
-        let groupid = this._compactBridgesMenu[bridgeid]["selected-group"];
-
-        let lightItems = this._createMenuLights(
-            bridgeid,
-            data,
-            data["groups"][groupid]["lights"],
-            groupid,
-            "lights"
-        );
-        for (let lightItem in lightItems) {
-            lightsSubMenu.menu.addMenuItem(lightItems[lightItem]);
-        }
+        this._setCompactMenuZeroLights(bridgeid, data);
 
         return lightsSubMenu;
     }
@@ -2047,29 +2290,7 @@ var PhueMenu = GObject.registerClass({
         this._compactBridgesMenu[bridgeid]["control"]["object"] = controlSubMenu;
         this._compactBridgesMenu[bridgeid]["control"]["icon"] = controlIcon;
 
-        if (this._compactBridgesMenu[bridgeid]["selected-light"] === null) {
-
-            controlSubMenu.menu.addMenuItem(
-                new PopupMenu.PopupMenuItem(
-                    _("None")
-                )
-            );
-
-            controlSubMenu.visible = false;
-
-            return controlSubMenu;
-        }
-
-        let controlItem = new PopupMenu.PopupMenuItem(
-            _("None")
-        )
-
-        controlItem.remove_child(controlItem.label);
-
-        let colorPickerBox = new ColorPicker.ColorPickerBox();
-        controlItem.add(colorPickerBox.createColorBox());
-
-        controlSubMenu.menu.addMenuItem(controlItem);
+        this._setCompactMenuZeroControl(bridgeid);
 
         return controlSubMenu;
     }
