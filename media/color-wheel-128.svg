@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- ============================================================================================================
+	Color Wheel - 128 Colors - Copyright (c) 2021, 2nv2u <info@2nv2u.com> - This work is distributed under GPLv3
+============================================================================================================= -->
+<svg width="256" height="256" viewBox="0 0 64 64" xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg">
+<title>Color Wheel</title>
+<style>circle.segment{ stroke-width:32; stroke-dasharray:1.171875 100; fill:transparent; }</style>
+<circle cx="32" cy="32" r="32" fill="rgb(150,150,150)" />
+<circle cx="32" cy="32" r="31.75" fill="rgb(255,255,255)" />
+<g><circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0.0,0.0)" stroke-dashoffset="-0.0" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,12.0,0)" stroke-dashoffset="-0.78125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,24.0,0)" stroke-dashoffset="-1.5625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,36.0,0)" stroke-dashoffset="-2.34375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,48.0,0)" stroke-dashoffset="-3.125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,60.0,0)" stroke-dashoffset="-3.90625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,72.0,0)" stroke-dashoffset="-4.6875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,84.0,0)" stroke-dashoffset="-5.46875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,96.0,0)" stroke-dashoffset="-6.25" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,108.0,0)" stroke-dashoffset="-7.03125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,120.0,0)" stroke-dashoffset="-7.8125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,132.0,0)" stroke-dashoffset="-8.59375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,144.0,0)" stroke-dashoffset="-9.375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,156.0,0)" stroke-dashoffset="-10.15625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,168.0,0)" stroke-dashoffset="-10.9375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,180.0,0)" stroke-dashoffset="-11.71875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,192.0,0)" stroke-dashoffset="-12.5" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,204.0,0)" stroke-dashoffset="-13.28125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,216.0,0)" stroke-dashoffset="-14.0625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,228.0,0)" stroke-dashoffset="-14.84375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,240.0,0)" stroke-dashoffset="-15.625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,252.0,0)" stroke-dashoffset="-16.40625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(248.0,255,0)" stroke-dashoffset="-17.1875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(236.0,255,0)" stroke-dashoffset="-17.96875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(224.0,255,0)" stroke-dashoffset="-18.75" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(212.0,255,0)" stroke-dashoffset="-19.53125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(200.0,255,0)" stroke-dashoffset="-20.3125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(188.0,255,0)" stroke-dashoffset="-21.09375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(176.0,255,0)" stroke-dashoffset="-21.875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(164.0,255,0)" stroke-dashoffset="-22.65625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(152.0,255,0)" stroke-dashoffset="-23.4375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(140.0,255,0)" stroke-dashoffset="-24.21875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(128.0,255,0)" stroke-dashoffset="-25.0" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(116.0,255,0)" stroke-dashoffset="-25.78125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(104.0,255,0)" stroke-dashoffset="-26.5625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(92.0,255,0)" stroke-dashoffset="-27.34375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(80.0,255,0)" stroke-dashoffset="-28.125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(68.0,255,0)" stroke-dashoffset="-28.90625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(56.0,255,0)" stroke-dashoffset="-29.6875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(44.0,255,0)" stroke-dashoffset="-30.46875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(32.0,255,0)" stroke-dashoffset="-31.25" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(20.0,255,0)" stroke-dashoffset="-32.03125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(8.0,255,0)" stroke-dashoffset="-32.8125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,4.0)" stroke-dashoffset="-33.59375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,16.0)" stroke-dashoffset="-34.375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,28.0)" stroke-dashoffset="-35.15625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,40.0)" stroke-dashoffset="-35.9375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,52.0)" stroke-dashoffset="-36.71875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,64.0)" stroke-dashoffset="-37.5" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,76.0)" stroke-dashoffset="-38.28125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,88.0)" stroke-dashoffset="-39.0625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,100.0)" stroke-dashoffset="-39.84375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,112.0)" stroke-dashoffset="-40.625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,124.0)" stroke-dashoffset="-41.40625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,136.0)" stroke-dashoffset="-42.1875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,148.0)" stroke-dashoffset="-42.96875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,160.0)" stroke-dashoffset="-43.75" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,172.0)" stroke-dashoffset="-44.53125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,184.0)" stroke-dashoffset="-45.3125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,196.0)" stroke-dashoffset="-46.09375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,208.0)" stroke-dashoffset="-46.875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,220.0)" stroke-dashoffset="-47.65625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,232.0)" stroke-dashoffset="-48.4375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,244.0)" stroke-dashoffset="-49.21875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,255,255)" stroke-dashoffset="-50.0" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,244.0,255)" stroke-dashoffset="-50.78125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,232.0,255)" stroke-dashoffset="-51.5625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,220.0,255)" stroke-dashoffset="-52.34375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,208.0,255)" stroke-dashoffset="-53.125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,196.0,255)" stroke-dashoffset="-53.90625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,184.0,255)" stroke-dashoffset="-54.6875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,172.0,255)" stroke-dashoffset="-55.46875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,160.0,255)" stroke-dashoffset="-56.25" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,148.0,255)" stroke-dashoffset="-57.03125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,136.0,255)" stroke-dashoffset="-57.8125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,124.0,255)" stroke-dashoffset="-58.59375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,112.0,255)" stroke-dashoffset="-59.375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,100.0,255)" stroke-dashoffset="-60.15625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,88.0,255)" stroke-dashoffset="-60.9375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,76.0,255)" stroke-dashoffset="-61.71875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,64.0,255)" stroke-dashoffset="-62.5" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,52.0,255)" stroke-dashoffset="-63.28125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,40.0,255)" stroke-dashoffset="-64.0625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,28.0,255)" stroke-dashoffset="-64.84375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,16.0,255)" stroke-dashoffset="-65.625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(0,4.0,255)" stroke-dashoffset="-66.40625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(8.0,0,255)" stroke-dashoffset="-67.1875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(20.0,0,255)" stroke-dashoffset="-67.96875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(32.0,0,255)" stroke-dashoffset="-68.75" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(44.0,0,255)" stroke-dashoffset="-69.53125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(56.0,0,255)" stroke-dashoffset="-70.3125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(68.0,0,255)" stroke-dashoffset="-71.09375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(80.0,0,255)" stroke-dashoffset="-71.875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(92.0,0,255)" stroke-dashoffset="-72.65625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(104.0,0,255)" stroke-dashoffset="-73.4375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(116.0,0,255)" stroke-dashoffset="-74.21875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(128.0,0,255)" stroke-dashoffset="-75.0" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(140.0,0,255)" stroke-dashoffset="-75.78125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(152.0,0,255)" stroke-dashoffset="-76.5625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(164.0,0,255)" stroke-dashoffset="-77.34375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(176.0,0,255)" stroke-dashoffset="-78.125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(188.0,0,255)" stroke-dashoffset="-78.90625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(200.0,0,255)" stroke-dashoffset="-79.6875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(212.0,0,255)" stroke-dashoffset="-80.46875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(224.0,0,255)" stroke-dashoffset="-81.25" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(236.0,0,255)" stroke-dashoffset="-82.03125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(248.0,0,255)" stroke-dashoffset="-82.8125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,252.0)" stroke-dashoffset="-83.59375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,240.0)" stroke-dashoffset="-84.375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,228.0)" stroke-dashoffset="-85.15625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,216.0)" stroke-dashoffset="-85.9375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,204.0)" stroke-dashoffset="-86.71875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,192.0)" stroke-dashoffset="-87.5" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,180.0)" stroke-dashoffset="-88.28125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,168.0)" stroke-dashoffset="-89.0625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,156.0)" stroke-dashoffset="-89.84375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,144.0)" stroke-dashoffset="-90.625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,132.0)" stroke-dashoffset="-91.40625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,120.0)" stroke-dashoffset="-92.1875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,108.0)" stroke-dashoffset="-92.96875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,96.0)" stroke-dashoffset="-93.75" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,84.0)" stroke-dashoffset="-94.53125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,72.0)" stroke-dashoffset="-95.3125" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,60.0)" stroke-dashoffset="-96.09375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,48.0)" stroke-dashoffset="-96.875" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,36.0)" stroke-dashoffset="-97.65625" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,24.0)" stroke-dashoffset="-98.4375" />
+<circle cx="32" cy="32" r="15.5" class="segment" stroke="rgb(255,0,12.0)" stroke-dashoffset="-99.21875" />
+</g><g><circle cx="32" cy="32" r="31.0" fill="rgba(255,255,255,0.0)" />
+<circle cx="32" cy="32" r="30.0" fill="rgba(255,255,255,0.0078)" />
+<circle cx="32" cy="32" r="29.0" fill="rgba(255,255,255,0.0156)" />
+<circle cx="32" cy="32" r="28.0" fill="rgba(255,255,255,0.0234)" />
+<circle cx="32" cy="32" r="27.0" fill="rgba(255,255,255,0.0312)" />
+<circle cx="32" cy="32" r="26.0" fill="rgba(255,255,255,0.0391)" />
+<circle cx="32" cy="32" r="25.0" fill="rgba(255,255,255,0.0469)" />
+<circle cx="32" cy="32" r="24.0" fill="rgba(255,255,255,0.0547)" />
+<circle cx="32" cy="32" r="23.0" fill="rgba(255,255,255,0.0625)" />
+<circle cx="32" cy="32" r="22.0" fill="rgba(255,255,255,0.0703)" />
+<circle cx="32" cy="32" r="21.0" fill="rgba(255,255,255,0.0781)" />
+<circle cx="32" cy="32" r="20.0" fill="rgba(255,255,255,0.0859)" />
+<circle cx="32" cy="32" r="19.0" fill="rgba(255,255,255,0.0938)" />
+<circle cx="32" cy="32" r="18.0" fill="rgba(255,255,255,0.1016)" />
+<circle cx="32" cy="32" r="17.0" fill="rgba(255,255,255,0.1094)" />
+<circle cx="32" cy="32" r="16.0" fill="rgba(255,255,255,0.1172)" />
+<circle cx="32" cy="32" r="15.0" fill="rgba(255,255,255,0.125)" />
+<circle cx="32" cy="32" r="14.0" fill="rgba(255,255,255,0.1328)" />
+<circle cx="32" cy="32" r="13.0" fill="rgba(255,255,255,0.1406)" />
+<circle cx="32" cy="32" r="12.0" fill="rgba(255,255,255,0.1484)" />
+<circle cx="32" cy="32" r="11.0" fill="rgba(255,255,255,0.1562)" />
+<circle cx="32" cy="32" r="10.0" fill="rgba(255,255,255,0.1641)" />
+<circle cx="32" cy="32" r="9.0" fill="rgba(255,255,255,0.1719)" />
+<circle cx="32" cy="32" r="8.0" fill="rgba(255,255,255,0.1797)" />
+<circle cx="32" cy="32" r="7.0" fill="rgba(255,255,255,0.1875)" />
+<circle cx="32" cy="32" r="6.0" fill="rgba(255,255,255,0.1953)" />
+<circle cx="32" cy="32" r="5.0" fill="rgba(255,255,255,0.2031)" />
+<circle cx="32" cy="32" r="4.0" fill="rgba(255,255,255,0.2109)" />
+<circle cx="32" cy="32" r="3.0" fill="rgba(255,255,255,0.2188)" />
+<circle cx="32" cy="32" r="2.0" fill="rgba(255,255,255,0.2266)" />
+<circle cx="32" cy="32" r="1.0" fill="rgba(255,255,255,0.2344)" />
+<circle cx="32" cy="32" r="0.0" fill="rgba(255,255,255,0.2422)" />
+</g></svg>
