@@ -1337,6 +1337,43 @@ var PhueMenu = GObject.registerClass({
                     controlItem.add(colorPickerBox.createColorBox());
 
                     this._compactBridgesMenu[bridgeid]["control"]["object"].menu.addMenuItem(controlItem);
+
+                    if (this._compactBridgesMenu[bridgeid]["control"]["switch"] != null){
+                        this._compactBridgesMenu[bridgeid]["control"]["object"].remove_child(
+                            this._compactBridgesMenu[bridgeid]["control"]["switch"]
+                        );
+                    }
+
+                    if (this._compactBridgesMenu[bridgeid]["control"]["slider"] != null){
+                        this._compactBridgesMenu[bridgeid]["control"]["box"].remove_child(
+                            this._compactBridgesMenu[bridgeid]["control"]["slider"]
+                        );
+                    }
+
+                    /**
+                     * If brightness is possible, add a slider
+                     */
+                    let lightSlider = null;
+                    if ((groupid === null &&
+                            data["lights"][lightid]["state"]["bri"] !== undefined) ||
+                        (groupid !== null &&
+                            data["groups"][groupid]["action"]["bri"] !== undefined)) {
+
+                        lightSlider = this._createBrightnessSlider(bridgeid, lightid, groupid, true);
+                        this._compactBridgesMenu[bridgeid]["control"]["box"].add(lightSlider);
+                    }
+
+                    let lightSwitch = this._createLightSwitch(bridgeid, lightid, groupid);
+                    this._compactBridgesMenu[bridgeid]["control"]["object"].add(lightSwitch);
+
+                    this._compactBridgesMenu[bridgeid]["control"]["switch"] = lightSwitch;
+                    this._compactBridgesMenu[bridgeid]["control"]["slider"] = lightSlider;
+
+                    /**
+                     * ask for async all data,
+                     * which will invoke refreshMenu
+                     */
+                    this.hue.instances[bridgeid].getAll();
                 }
             );
 
@@ -1729,6 +1766,18 @@ var PhueMenu = GObject.registerClass({
      * @param {Number} groupid
      */
     _setCompactMenuGroupControl(bridgeid, groupid) {
+
+        if (this._compactBridgesMenu[bridgeid]["control"]["switch"] != null){
+            this._compactBridgesMenu[bridgeid]["control"]["object"].remove_child(
+                this._compactBridgesMenu[bridgeid]["control"]["switch"]
+            );
+        }
+
+        if (this._compactBridgesMenu[bridgeid]["control"]["slider"] != null){
+            this._compactBridgesMenu[bridgeid]["control"]["box"].remove_child(
+                this._compactBridgesMenu[bridgeid]["control"]["slider"]
+            );
+        }
 
         this._compactBridgesMenu[bridgeid]["control"]["object"].menu.removeAll();
 
@@ -2291,6 +2340,13 @@ var PhueMenu = GObject.registerClass({
             _("Control")
         );
 
+        let label = controlSubMenu.label
+        controlSubMenu.remove_child(controlSubMenu.label);
+        let itemBox = new St.BoxLayout();
+        itemBox.vertical = true;
+        itemBox.add(label);
+        controlSubMenu.insert_child_at_index(itemBox, 1);
+
         /* disable closing menu on item activated */
         controlSubMenu.menu.itemActivated = (animate) => {};
 
@@ -2325,6 +2381,9 @@ var PhueMenu = GObject.registerClass({
         this._compactBridgesMenu[bridgeid]["control"] = {};
         this._compactBridgesMenu[bridgeid]["control"]["object"] = controlSubMenu;
         this._compactBridgesMenu[bridgeid]["control"]["icon"] = controlIcon;
+        this._compactBridgesMenu[bridgeid]["control"]["box"] = itemBox;
+        this._compactBridgesMenu[bridgeid]["control"]["switch"] = null;
+        this._compactBridgesMenu[bridgeid]["control"]["slider"] = null;
 
         this._setCompactMenuZeroControl(bridgeid);
 
