@@ -104,6 +104,7 @@ var PhueMenu = GObject.registerClass({
         this._bridgesInMenu = [];
         this._openMenuDefault = null;
         this._isStreaming = {};
+        this._defaultBackgroundColor = null;
 
         this._settings = ExtensionUtils.getSettings(Utils.HUELIGHTS_SETTINGS_SCHEMA);
         this._settings.connect("changed", Lang.bind(this, function() {
@@ -1057,6 +1058,8 @@ var PhueMenu = GObject.registerClass({
             data["config"]["name"]
         );
 
+        this._defaultBackgroundColor = item.get_background_color();
+
         if (this._iconPack !== PhueIconPack.NONE) {
             switch (data["config"]["modelid"]) {
 
@@ -1227,6 +1230,24 @@ var PhueMenu = GObject.registerClass({
         return switchButton;
     }
 
+    _createBackgroundColor(item, bridgeid, data, lightid, groupid, tmp) {
+
+        let bridgePath = "";
+
+        if (groupid !== null) {
+            bridgePath = `${this._rndID()}::groups::${groupid}::action`;
+        } else {
+            bridgePath = `${this._rndID()}::lights::${lightid}::state`;
+        }
+
+        this.refreshMenuObjects[bridgePath] = {
+            "bridgeid": bridgeid,
+            "object":item,
+            "type": "background-color",
+            "tmp": tmp
+        }
+    }
+
     /**
      * Creates last item in menu hierarchy with all the controls.
      * 
@@ -1266,8 +1287,12 @@ var PhueMenu = GObject.registerClass({
         light.set_x_align(Clutter.ActorAlign.FILL);
         light.label.set_x_expand(true);
 
+        if (groupid === null && data["lights"][lightid]["state"]["xy"] !== undefined) {
+            this._createBackgroundColor(light, bridgeid, data, lightid, groupid, useCompact);
+        }
+
         /**
-         * Open color picker on mouse click
+         * Open color picker on mouse click (standard menu)
          */
         if (groupid !== null) {
             bridgePath = `${this._rndID()}::groups::${groupid}::action::hue`;
@@ -1348,6 +1373,10 @@ var PhueMenu = GObject.registerClass({
                         this._compactBridgesMenu[bridgeid]["control"]["box"].remove_child(
                             this._compactBridgesMenu[bridgeid]["control"]["slider"]
                         );
+                    }
+
+                    if (groupid === null && data["lights"][lightid]["state"]["xy"] !== undefined) {
+                        this._createBackgroundColor(controlItem, bridgeid, data, lightid, groupid, useCompact);
                     }
 
                     /**
@@ -3167,6 +3196,35 @@ var PhueMenu = GObject.registerClass({
                         object.value = 0;
                     }
 
+                    break;
+
+                case "background-color":
+                    parsedBridgePath[2] = parseInt(parsedBridgePath[2]);
+
+                    value = this.bridesData[bridgeid];
+                    for (let i in parsedBridgePath) {
+                        if (i == 0) {
+                            continue;
+                        }
+
+                        value = value[parsedBridgePath[i]];
+                    }
+
+                    if (!value["on"]) {
+                        object.set_background_color(this._defaultBackgroundColor);
+
+                        break;
+                    }
+
+                    let [r, g, b] = Utils.xyBriToColor(
+                        value["xy"][0],
+                        value["xy"][1],
+                        254 /* or value["bri"] */
+                    );
+
+                    object.set_background_color(
+                        new Clutter.Color({ red: r, green: g, blue: b, alpha: 170 })
+                    );
                     break;
 
                 case "battery":
