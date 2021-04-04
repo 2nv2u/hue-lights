@@ -314,6 +314,7 @@ function colorToHueXY(cred, cgreen, cblue) {
 /**
  * Convert xy and brightness to RGB
  * https://stackoverflow.com/questions/22894498/philips-hue-convert-xy-from-api-to-hex-or-rgb
+ * https://stackoverflow.com/questions/16052933/convert-philips-hue-xy-values-to-hex
  *
  * @param {Number} x
  * @param {Number} y
@@ -343,6 +344,14 @@ function xyBriToColor(x, y, bri){
     r = r * 255; if (r < 0) { r = 255 };
     g = g * 255; if (g < 0) { g = 255 };
     b = b * 255; if (b < 0) { b = 255 };
+
+    if (r > 1) {r = r - 1};
+    if (g > 1) {g = g - 1};
+    if (b > 1) {b = b - 1};
+
+    r = Math.round(r);
+    g = Math.round(g);
+    b = Math.round(b);
 
     return [r, g, b];
 }
