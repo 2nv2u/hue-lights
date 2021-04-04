@@ -288,6 +288,13 @@ var PhueMenu = GObject.registerClass({
         }
 
         /**
+         * this._compactMenuRemember doesn't need rebuild
+         */
+        this._compactMenuRemember = this._settings.get_boolean(
+            Utils.HUELIGHTS_SETTINGS_COMPACTMENU_REMEMBER_OPENED
+        );
+
+        /**
          * debug doesn't need rebuild
          */
         Utils.debug = this._settings.get_boolean(
@@ -1335,8 +1342,11 @@ var PhueMenu = GObject.registerClass({
 
             light.originalActivate = light.activate;
             light.activate = (event) => {
-                this._openMenuDefault = this._compactBridgesMenu[bridgeid]["control"]["object"].menu;
-                this._openMenuDefault.open(true);
+                if (this._compactMenuRemember) {
+                    this._openMenuDefault = this._compactBridgesMenu[bridgeid]["control"]["object"].menu;
+                }
+
+                this._compactBridgesMenu[bridgeid]["control"]["object"].menu.open(true);
 
                 return light.originalActivate(event);
             }
@@ -1809,8 +1819,11 @@ var PhueMenu = GObject.registerClass({
 
         zeroItem.originalActivate = zeroItem.activate;
         zeroItem.activate = (event) => {
-            this._openMenuDefault = this._compactBridgesMenu[bridgeid]["groups"]["object"].menu;
-            this._openMenuDefault.open(true);
+            if (this._compactMenuRemember) {
+                this._openMenuDefault = this._compactBridgesMenu[bridgeid]["groups"]["object"].menu;
+            }
+
+            this._compactBridgesMenu[bridgeid]["groups"]["object"].menu.open(true);
 
             this._compactBridgesMenu[bridgeid]["zero"].visible = false;
             this._compactBridgesMenu[bridgeid]["scenes"]["object"].visible = false;
@@ -1990,8 +2003,11 @@ var PhueMenu = GObject.registerClass({
 
             groupItem.originalActivate = groupItem.activate;
             groupItem.activate = (event) => {
-                this._openMenuDefault = this._compactBridgesMenu[bridgeid]["lights"]["object"].menu;
-                this._openMenuDefault.open(true);
+                if (this._compactMenuRemember) {
+                    this._openMenuDefault = this._compactBridgesMenu[bridgeid]["lights"]["object"].menu;
+                }
+
+                this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.open(true);
 
                 this._compactBridgesMenu[bridgeid]["zero"].visible = true;
 
@@ -2066,6 +2082,11 @@ var PhueMenu = GObject.registerClass({
         groupsSubMenu.connect(
             'button-press-event',
             () => {
+                if (!this._compactMenuRemember) {
+                    this._openMenuDefault = this._compactBridgesMenu[bridgeid]["groups"]["object"].menu;
+                    return;
+                }
+
                 this._openMenuDefault = null;
                 if (!groupsSubMenu.menu.isOpen) {
                     this._openMenuDefault = groupsSubMenu.menu;
@@ -2143,16 +2164,21 @@ var PhueMenu = GObject.registerClass({
         lightsSubMenu.connect(
             'button-press-event',
             () => {
-                this._openMenuDefault = null;
-                if (!lightsSubMenu.menu.isOpen) {
-                    this._openMenuDefault = lightsSubMenu.menu;
-                }
-
                 if (this._compactBridgesMenu[bridgeid]["selected-group"] !== null) {
                     this._setCompactMenuGroupControl(
                         bridgeid,
                         this._compactBridgesMenu[bridgeid]["selected-group"]
                     );
+                }
+
+                if (!this._compactMenuRemember) {
+                    this._openMenuDefault = this._compactBridgesMenu[bridgeid]["groups"]["object"].menu;
+                    return;
+                }
+
+                this._openMenuDefault = null;
+                if (!lightsSubMenu.menu.isOpen) {
+                    this._openMenuDefault = lightsSubMenu.menu;
                 }
             }
         );
@@ -2202,6 +2228,11 @@ var PhueMenu = GObject.registerClass({
         scenesSubMenu.connect(
             'button-press-event',
             () => {
+                if (!this._compactMenuRemember) {
+                    this._openMenuDefault = this._compactBridgesMenu[bridgeid]["groups"]["object"].menu;
+                    return;
+                }
+
                 this._openMenuDefault = null;
                 if (!scenesSubMenu.menu.isOpen) {
                     this._openMenuDefault = scenesSubMenu.menu;
@@ -2266,6 +2297,11 @@ var PhueMenu = GObject.registerClass({
         controlSubMenu.connect(
             'button-press-event',
             () => {
+                if (!this._compactMenuRemember) {
+                    this._openMenuDefault = this._compactBridgesMenu[bridgeid]["groups"]["object"].menu;
+                    return;
+                }
+
                 this._openMenuDefault = null;
                 if (!controlSubMenu.menu.isOpen) {
                     this._openMenuDefault = controlSubMenu.menu;
