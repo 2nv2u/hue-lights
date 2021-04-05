@@ -769,6 +769,14 @@ var PhueMenu = GObject.registerClass({
                     cmd["xy"] = value;
                 }
 
+                if (parsedBridgePath[1] === "groups") {
+                    let groupBrightness = this._getGroupBrightness(bridgeid, parsedBridgePath[2]);
+                    if (groupBrightness > 0) {
+                        /* some lights are already on, do not turn on the rest */
+                        delete(cmd["on"]);
+                    }
+                }
+
                 if (parsedBridgePath[1] == "groups") {
 
                     this.hue.instances[bridgeid].actionGroup(
@@ -1334,6 +1342,10 @@ var PhueMenu = GObject.registerClass({
         let bridgePath = "";
 
         if (groupid === null && this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"] === undefined) {
+            return;
+        }
+
+        if (groupid !== null && this.bridesData[bridgeid]["groups"][groupid]["action"]["xy"] === undefined) {
             return;
         }
 
@@ -3352,11 +3364,17 @@ var PhueMenu = GObject.registerClass({
                         break;
                     }
 
-                    let [r, g, b] = Utils.xyBriToColor(
-                        value["xy"][0],
-                        value["xy"][1],
-                        255 /* or value["bri"] */
-                    );
+                    let r = 0;
+                    let g = 0;
+                    let b = 0;
+
+                    if (parsedBridgePath[1] === "lights") {
+                        [r, g, b] = Utils.xyBriToColor(
+                            value["xy"][0],
+                            value["xy"][1],
+                            255 /* or value["bri"] */
+                        );
+                    }
 
                     if (parsedBridgePath[1] === "groups") {
                         [r, g, b] = this._getGroupColor(bridgeid, parsedBridgePath[2]);
