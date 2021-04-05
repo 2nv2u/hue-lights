@@ -59,6 +59,12 @@ var HUELIGHTS_SETTINGS_ENTERTAINMENT = "entertainment";
 var HUELIGHTS_SETTINGS_ENTERTAINMENT_TYPE = "a{sa{si}}";
 
 var getHueIconFile = {
+    "SML001": "devicesMotionSensor",
+    "RWL020": "devicesDimmerswitch",
+    "RWL021": "devicesDimmerswitch",
+
+    "LCT015": "bulbsSultan",
+
     "Downstairs": "zonesAreasGroundfloor",
     "Upstairs": "zonesAreasFirstfloor",
     "Top floor": "zonesAreasSecondfloor",

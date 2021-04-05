@@ -402,6 +402,14 @@ var PhueMenu = GObject.registerClass({
         let counter = 0;
         let value = 0;
 
+        if (this.bridesData[bridgeid]["groups"][groupid] === undefined) {
+            return value;
+        }
+
+        if (this.bridesData[bridgeid]["groups"][groupid]["lights"] === undefined) {
+            return value;
+        }
+
         for (let lightid of this.bridesData[bridgeid]["groups"][groupid]["lights"]) {
 
             if (!this.bridesData[bridgeid]["lights"][lightid]["state"]["on"]) {
@@ -1011,6 +1019,7 @@ var PhueMenu = GObject.registerClass({
      */
     _createItemSensor(bridgeid, sensorid, data) {
 
+        let sensorIcon = null;
         let uniqueid = data["sensors"][sensorid]["uniqueid"].split("-")[0];
 
         let item = new PopupMenu.PopupMenuItem(
@@ -1018,6 +1027,12 @@ var PhueMenu = GObject.registerClass({
         )
 
         item.label.set_x_expand(true);
+
+        sensorIcon = this._tryGetSensorIcon(data["sensors"][sensorid]);
+
+        if (sensorIcon !== null) {
+            item.insert_child_at_index(sensorIcon, 1);
+        }
 
         let temperature = this._tryaddSensorsTemperature(bridgeid, uniqueid, data);
         if (temperature !== null) {
@@ -1378,6 +1393,7 @@ var PhueMenu = GObject.registerClass({
 
         let light;
         let bridgePath = "";
+        let lightIcon = null;
 
         /**
          * Decide if this is item for one light or a group.
@@ -1401,6 +1417,20 @@ var PhueMenu = GObject.registerClass({
 
         light.set_x_align(Clutter.ActorAlign.FILL);
         light.label.set_x_expand(true);
+
+        if (groupid === null) {
+            lightIcon = this._tryGetLightIcon(data["lights"][lightid]);
+        } else {
+            if (this._iconPack !== PhueIconPack.NONE) {
+                    lightIcon = this._getIconByPath(
+                    Me.dir.get_path() + `/media/HueIcons/bulbGroup.svg`
+                );
+            }
+        }
+
+        if (lightIcon !== null) {
+            light.insert_child_at_index(lightIcon, 1);
+        }
 
         /**
          * Open color picker on mouse click (standard menu)
@@ -1789,6 +1819,64 @@ var PhueMenu = GObject.registerClass({
         }
 
         iconPath = Me.dir.get_path() + `/media/HueIcons/${Utils.getHueIconFile[groupData["class"]]}.svg`
+
+        return this._getIconByPath(iconPath);
+    }
+
+    /**
+     * Tries to determine icon for light
+     * 
+     * @method _tryGetLightIcon
+     * @param {Object} group data
+     * @return {Object} icon or null
+     */
+    _tryGetLightIcon(lightData) {
+
+        let iconPath = "";
+
+        if (this._iconPack === PhueIconPack.NONE) {
+            return null;
+        }
+
+
+        if (lightData["modelid"] === undefined) {
+            return null;
+        }
+
+        if (Utils.getHueIconFile[lightData["modelid"]] === undefined) {
+            iconPath = Me.dir.get_path() + `/media/HueIcons/bulbsClassic.svg`
+        } else {
+            iconPath = Me.dir.get_path() + `/media/HueIcons/${Utils.getHueIconFile[lightData["modelid"]]}.svg`
+        }
+
+        return this._getIconByPath(iconPath);
+    }
+
+    /**
+     * Tries to determine icon for accessory
+     * 
+     * @method _tryGetAccessoryIcon
+     * @param {Object} group data
+     * @return {Object} icon or null
+     */
+    _tryGetSensorIcon(sensorData) {
+
+        let iconPath = "";
+
+        if (this._iconPack === PhueIconPack.NONE) {
+            return null;
+        }
+
+
+        if (sensorData["modelid"] === undefined) {
+            return null;
+        }
+
+        if (Utils.getHueIconFile[sensorData["modelid"]] === undefined) {
+            return null;
+        }
+
+        iconPath = Me.dir.get_path() + `/media/HueIcons/${Utils.getHueIconFile[sensorData["modelid"]]}.svg`
 
         return this._getIconByPath(iconPath);
     }
@@ -2405,11 +2493,9 @@ var PhueMenu = GObject.registerClass({
 
         let lightsIcon = null;
         if (this._iconPack !== PhueIconPack.NONE) {
-            let iconPath = "";
-
-            iconPath = Me.dir.get_path() + `/media/HueIcons/bulbGroup.svg`
-
-            lightsIcon = this._getIconByPath(iconPath);
+            lightsIcon = this._getIconByPath(
+                Me.dir.get_path() + `/media/HueIcons/bulbGroup.svg`
+            );
         }
 
         if (lightsIcon !== null) {
