@@ -243,51 +243,6 @@ var ColorPickerBox =  GObject.registerClass({
     }
 
     /**
-     * Create collored button
-     *  
-     * @method _createRgbButton
-     * @private
-     * @return {Object} New colored button
-     */
-    _createRgbButton(RGB, colorTemperature) {
-        let colorButton;
-        let colorHexStr;
-
-        colorHexStr = this.rgbToHexStr(RGB);
-        colorButton = new St.Button({
-            style: `background-color: ${colorHexStr}; border-radius: 3px;`
-        });
-
-        colorButton.connect(
-            "button-press-event",
-            this._colorPickedEvent.bind(this, RGB, colorTemperature)
-        );
-        colorButton.set_size(20, 20);
-        this._centerObject(colorButton);
-        return colorButton;
-    }
-
-
-    /**
-     * Handler for picking colour emits 'color-picked'
-     *  
-     * @method _colorPickedEvent
-     * @private
-     * @param {Number} selected color
-     * @param {Boolean} true if temperature of white
-     */
-     _colorPickedEvent(rgb, colorTemperature) {
-
-        this.colorTemperature = colorTemperature;
-        this.isWhiteTemperature = this.switchWhite.state;
-        this.r = rgb[0];
-        this.g = rgb[1];
-        this.b = rgb[2];
-
-        this.emit("color-picked");
-    }
-
-    /**
      * Handler for picking brightness emrgbToHexStrits 'brightness-picked'
      *  
      * @method _brightnessEvent
