@@ -344,6 +344,60 @@ var PhueMenu = GObject.registerClass({
         return menuNeedsRebuild;
     }
 
+    /**
+     * Gets the group color based on lights turned on.
+     * 
+     * @method _getGroupColor
+     * @param {String} bridgeid
+     * @param {Number} groupid
+     * @return {Object} avarage RGB color
+     */
+    _getGroupColor(bridgeid, groupid) {
+        let counter = 0;
+        let r = 0;
+        let g = 0;
+        let b = 0;
+
+        for (let lightid of this.bridesData[bridgeid]["groups"][groupid]["lights"]) {
+
+            if (!this.bridesData[bridgeid]["lights"][lightid]["state"]["on"]) {
+                continue;
+            }
+
+            if (this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"] === undefined) {
+                continue;
+            }
+
+            let [tmpR, tmpG, tmpB] = Utils.xyBriToColor(
+                this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"][0],
+                this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"][1],
+                255 /* or value["bri"] */
+            );
+
+            r += tmpR;
+            g += tmpG;
+            b += tmpB;
+
+            counter++;
+        }
+
+        if (counter > 0) {
+            r = Math.round(r/counter);
+            g = Math.round(g/counter);
+            b = Math.round(b/counter);
+        }
+
+        return [r, g, b];
+    }
+
+    /**
+     * Gets the group brightness based on lights turned on.
+     * 
+     * @method _getGroupBrightness
+     * @param {String} bridgeid
+     * @param {Number} groupid
+     * @return {Object} avarage brightness
+     */
     _getGroupBrightness(bridgeid, groupid) {
         let counter = 0;
         let value = 0;
@@ -354,7 +408,7 @@ var PhueMenu = GObject.registerClass({
                 continue;
             }
 
-            if (!this.bridesData[bridgeid]["lights"][lightid]["state"]["bri"] === undefined) {
+            if (this.bridesData[bridgeid]["lights"][lightid]["state"]["bri"] === undefined) {
                 continue;
             }
 
@@ -1178,7 +1232,7 @@ var PhueMenu = GObject.registerClass({
         slider.set_x_expand(false);
         slider.value = 100/254;
 
-        this._createSliderColor(slider, bridgeid, lightid, groupid, true);
+        this._createSliderColor(slider, bridgeid, lightid, groupid, tmp);
 
         if (groupid !== null) {
             bridgePath = `${this._rndID()}::groups::${groupid}::action::bri`;
@@ -1265,11 +1319,21 @@ var PhueMenu = GObject.registerClass({
         return switchButton;
     }
 
+    /**
+     * Colorizes slideres based on light color.
+     * 
+     * @method _createLightSwitch
+     * @param {Object} slider to colorize
+     * @param {String} bridgeid
+     * @param {Number} lightid
+     * @param {Number} groupid
+     * @param {Boolean} tmp: true for tmp refresh
+     */
     _createSliderColor(slider, bridgeid, lightid, groupid, tmp) {
 
         let bridgePath = "";
 
-        if (groupid !== null || this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"] === undefined) {
+        if (groupid === null && this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"] === undefined) {
             return;
         }
 
@@ -3280,7 +3344,9 @@ var PhueMenu = GObject.registerClass({
                         value = value[parsedBridgePath[i]];
                     }
 
-                    if (!value["on"]) {
+                    if (parsedBridgePath[1] === "lights" &&  !value["on"] ||
+                        (parsedBridgePath[1] === "groups" && this._getGroupBrightness(bridgeid, parsedBridgePath[2]) === 0)) {
+
                         object.style = null;
 
                         break;
@@ -3291,6 +3357,10 @@ var PhueMenu = GObject.registerClass({
                         value["xy"][1],
                         255 /* or value["bri"] */
                     );
+
+                    if (parsedBridgePath[1] === "groups") {
+                        [r, g, b] = this._getGroupColor(bridgeid, parsedBridgePath[2]);
+                    }
 
                     r = ('0' + r.toString(16)).slice(-2);
                     g = ('0' + g.toString(16)).slice(-2);
