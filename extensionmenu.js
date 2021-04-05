@@ -344,6 +344,31 @@ var PhueMenu = GObject.registerClass({
         return menuNeedsRebuild;
     }
 
+    _getGroupBrightness(bridgeid, groupid) {
+        let counter = 0;
+        let value = 0;
+
+        for (let lightid of this.bridesData[bridgeid]["groups"][groupid]["lights"]) {
+
+            if (!this.bridesData[bridgeid]["lights"][lightid]["state"]["on"]) {
+                continue;
+            }
+
+            if (!this.bridesData[bridgeid]["lights"][lightid]["state"]["bri"] === undefined) {
+                continue;
+            }
+
+            value += this.bridesData[bridgeid]["lights"][lightid]["state"]["bri"];
+            counter++;
+        }
+
+        if (counter > 0) {
+            value = Math.round(value/counter);
+        }
+
+        return value;
+    }
+
     /**
      * Generate almoust useless ID number
      * 
@@ -606,7 +631,16 @@ var PhueMenu = GObject.registerClass({
                     cmd = {"on": true, "bri": value};
                 }
 
-                if (parsedBridgePath[1] == "groups") {
+
+                if (parsedBridgePath[1] === "groups") {
+                    let groupBrightness = this._getGroupBrightness(bridgeid, parsedBridgePath[2]);
+                    if (groupBrightness > 0) {
+                        /* some lights are already on, do not turn on the rest */
+                        delete(cmd["on"]);
+                    }
+                }
+
+                if (parsedBridgePath[1] === "groups") {
 
                     this.hue.instances[bridgeid].actionGroup(
                         parseInt(parsedBridgePath[2]),
@@ -614,7 +648,7 @@ var PhueMenu = GObject.registerClass({
                     );
                 }
 
-                if (parsedBridgePath[1] == "lights") {
+                if (parsedBridgePath[1] === "lights") {
 
                     this.hue.instances[bridgeid].setLights(
                         parsedBridgePath[2],
@@ -2879,7 +2913,7 @@ var PhueMenu = GObject.registerClass({
 
         if (p[1] == "groups") {
             let group = this.bridesData[bridgeid]["groups"][p[2]];
-            return group["state"]["all_on"];
+            return group["state"]["any_on"];
         }
 
         return true;
@@ -3210,6 +3244,10 @@ var PhueMenu = GObject.registerClass({
                         }
 
                         value = value[parsedBridgePath[i]];
+                    }
+
+                    if (parsedBridgePath[1] === "groups") {
+                        value = this._getGroupBrightness(bridgeid, parsedBridgePath[2]);
                     }
 
                     value = value/255;

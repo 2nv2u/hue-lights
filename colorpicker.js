@@ -171,7 +171,7 @@ var ColorPickerBox =  GObject.registerClass({
         let mainbox = new St.BoxLayout({vertical: true});
         this._centerObject(mainbox);
 
-        let colorWheel =  new ColorSelectorButton(Me.dir.get_path() + '/media/color-wheel-64-2.svg');
+        let colorWheel =  new ColorSelectorButton(Me.dir.get_path() + '/media/color-wheel-64.svg');
         colorWheel.connect(
             "button-press-event",
             async () => {
