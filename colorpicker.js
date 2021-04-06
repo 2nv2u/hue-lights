@@ -51,12 +51,6 @@ const PhueScreenshot = Me.imports.phuescreenshot;
 const Gettext = imports.gettext;
 const _ = Gettext.gettext;
 
-const whiteShades = [
-    [2000, 2200, 2400, 2600, 2800, 3000, 3200, 3400, 3600, 3800, 4000, 4200],
-    [4400, 4600, 4800, 5000, 5200, 5400, 5600, 5800, 6000, 6200, 6400, 6500]
-    ]
-
-
 /**
  * ColorSelectorButton button.
  * 
@@ -130,16 +124,23 @@ var ColorPickerBox =  GObject.registerClass({
      * @method _init
      * @private
      */
-    _init(showBrightness = false) {
+    _init(params) {
+        params = Params.parse(params, {
+            useColorWheel: true,
+            useWhiteBox: true,
+            showBrightness: false,
+        });
+
         super._init();
 
         this.slider = null;
-        this.switchWhite = null;
         this.colorTemperature = 0;
         this.r = 0;
         this.g = 0;
         this.b = 0;
-        this._showBrightness = showBrightness;
+        this._useColorWheel = params.useColorWheel;
+        this._useWhiteBox = params.useWhiteBox;
+        this._showBrightness = params.showBrightness;
     }
 
     /**
@@ -163,81 +164,69 @@ var ColorPickerBox =  GObject.registerClass({
      */
      createColorBox() {
 
-        let box;
-        let label;
-        let switchButton;
-
         let mainbox = new St.BoxLayout({vertical: true});
         this._centerObject(mainbox);
 
-        let colorWheel =  new ColorSelectorButton(Me.dir.get_path() + '/media/color-wheel.svg');
-        colorWheel.connect(
-            "button-press-event",
-            async () => {
-                let color = await colorWheel.getColor();
-                this.r = color.red;
-                this.g = color.green;
-                this.b = color.blue;
-                this.colorTemperature = 0;
-                this.emit("color-picked");
+        if (this._useColorWheel) {
+            let colorWheel =  new ColorSelectorButton(Me.dir.get_path() + '/media/color-wheel.svg');
+            colorWheel.connect(
+                "button-press-event",
+                async () => {
+                    let color = await colorWheel.getColor();
+                    this.r = color.red;
+                    this.g = color.green;
+                    this.b = color.blue;
+                    this.colorTemperature = 0;
+                    this.emit("color-picked");
+                }
+            );
+            this._centerObject(colorWheel);
+            mainbox.add(colorWheel);
+
+            if (this._useWhiteBox) {
+                mainbox.add(new PopupMenu.PopupSeparatorMenuItem());
             }
-        );
-        this._centerObject(colorWheel);
-        mainbox.add(colorWheel);
-
-        mainbox.add(new PopupMenu.PopupSeparatorMenuItem());
-
-        let whiteBox =  new ColorSelectorButton(
-            Me.dir.get_path() + '/media/temperature-bar.svg',
-            {   buttonWidth: 256,
-                buttonHeight: 32
-            }
-        );
-        whiteBox.connect(
-            "button-press-event",
-            async () => {
-                let color = await colorWheel.getColor();
-                this.r = color.red;
-                this.g = color.green;
-                this.b = color.blue;
-                this.isWhiteTemperature = this.switchWhite.state;
-                this.colorTemperature = 0;
-                this.emit("color-picked");
-            }
-        );
-        this._centerObject(whiteBox);
-        mainbox.add(whiteBox);
-
-        box = new St.BoxLayout({vertical: false});
-        this._centerObject(box);
-
-        label = new St.Label({"text": _("Temperature of white:") });
-        this._centerObject(label);
-        box.add(label);
-
-        this.switchWhite = new PopupMenu.Switch(true);
-
-        switchButton = new St.Button({reactive: true, can_focus: true});
-        this._centerObject(switchButton);
-        switchButton.child = this.switchWhite;
-        switchButton.connect("button-press-event",  Lang.bind(this, function() {
-            this.switchWhite.toggle();
-        }));
-
-        box.add(switchButton);
-        mainbox.add(box);
-
-        if (!this._showBrightness) {
-            return mainbox;
         }
-        mainbox.add(new PopupMenu.PopupSeparatorMenuItem());
 
-        /**
-         * Brightness slider
-         */
-        this.slider = new Slider.Slider(0);
-        this.slider.connect("drag-end", this._brightnessEvent.bind(this));
-        mainbox.add(this.slider);
+        if (this._useWhiteBox) {
+            let whiteBox =  new ColorSelectorButton(
+                Me.dir.get_path() + '/media/temperature-bar.svg',
+                {
+                    buttonWidth: 256,
+                    buttonHeight: 32
+                }
+            );
+            whiteBox.connect(
+                "button-press-event",
+                async () => {
+
+                    let color = await whiteBox.getColor();
+
+                    this.r = color.red;
+                    this.g = color.green;
+                    this.b = color.blue;
+                    let kelvin = 0;
+
+                    kelvin = Utils.RGBToKelvin(this.r, this.g, this.b);
+
+                    this.colorTemperature = kelvin;
+                    this.emit("color-picked");
+                }
+            );
+            this._centerObject(whiteBox);
+            mainbox.add(whiteBox);
+        }
+
+        if (this._showBrightness) {
+            mainbox.add(new PopupMenu.PopupSeparatorMenuItem());
+
+            /**
+             * Brightness slider
+             */
+            this.slider = new Slider.Slider(0);
+            this.slider.connect("drag-end", this._brightnessEvent.bind(this));
+            mainbox.add(this.slider);
+        }
 
         return mainbox;
     }
@@ -318,14 +307,18 @@ var ColorPicker =  GObject.registerClass({
      * @method _init
      * @private
      */
-    _init(params = {}) {
+    _init(params) {
+        params = Params.parse(params, {
+            useColorWheel: true,
+            useWhiteBox: true,
+        });
+
         super._init();
 
         this._dialogLayout = typeof this.dialogLayout === "undefined"
             ? this._dialogLayout
             : this.dialogLayout;
 
-        this.isWhiteTemperature = null;
         this.colorTemperature = 0;
         this.r = 0;
         this.g = 0;
@@ -337,13 +330,16 @@ var ColorPicker =  GObject.registerClass({
             key: Clutter.Escape
         }]);
 
-        this.colorPickerBox = new ColorPickerBox(true);
+        this.colorPickerBox = new ColorPickerBox({
+            useColorWheel: params.useColorWheel,
+            useWhiteBox: params.useWhiteBox,
+            showBrightness: true
+        });
 
         this.colorPickerBox.connect(
             "color-picked",
             () => {
                 this.colorTemperature = this.colorPickerBox.colorTemperature;
-                this.isWhiteTemperature = this.colorPickerBox.switchWhite.state;
                 this.r = this.colorPickerBox.r;
                 this.g = this.colorPickerBox.g;
                 this.b = this.colorPickerBox.b;

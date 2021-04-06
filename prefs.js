@@ -786,7 +786,7 @@ var Prefs = class HuePrefs {
         /**
          * Brightness for notification light
          */
-        let briVal = 254;
+        let briVal = 255;
         if (notifyLightId !== undefined &&
             this._notifyLights[notifyLightId] !== undefined &&
             this._notifyLights[notifyLightId]["bri"] !== undefined) {
@@ -797,7 +797,7 @@ var Prefs = class HuePrefs {
         let adj = new Gtk.Adjustment({
             value : 1.0,
             lower: 0,
-            upper: 254,
+            upper: 255,
             step_increment : 1,
             page_increment : 20,
             page_size : 0
@@ -1021,7 +1021,7 @@ var Prefs = class HuePrefs {
             adj = new Gtk.Adjustment({
                 value : 1.0,
                 lower: 0,
-                upper: 254,
+                upper: 255,
                 step_increment : 1,
                 page_increment : 20,
                 page_size : 0
@@ -1034,7 +1034,7 @@ var Prefs = class HuePrefs {
             intensityEntertainmentWidget.value = 150
             if (this._entertainment[bridgeid] !== undefined) {
                 if (this._entertainment[bridgeid]["intensity"] !== undefined) {
-                    intensityEntertainmentWidget.value = 254 - this._entertainment[bridgeid]["intensity"] + 40;
+                    intensityEntertainmentWidget.value = 255 - this._entertainment[bridgeid]["intensity"] + 40;
                 }
 
             }
@@ -1070,7 +1070,7 @@ var Prefs = class HuePrefs {
             adj = new Gtk.Adjustment({
                 value : 1.0,
                 lower: 0,
-                upper: 254,
+                upper: 255,
                 step_increment : 1,
                 page_increment : 20,
                 page_size : 0
@@ -1080,7 +1080,7 @@ var Prefs = class HuePrefs {
                 adjustment : adj
             });
 
-            brightnessEntertainmentWidget.value = 254;
+            brightnessEntertainmentWidget.value = 255;
             if (this._entertainment[bridgeid] !== undefined) {
                 if (this._entertainment[bridgeid]["bri"] !== undefined) {
                     brightnessEntertainmentWidget.value = this._entertainment[bridgeid]["bri"];
@@ -1355,9 +1355,9 @@ var Prefs = class HuePrefs {
                 bridgeid = data["bridgeid"];
                 Utils.logDebug(`Removing bridge: ${bridgeid}`);
 
-                delete this._hue.bridges[bridgeid];
+                delete(this._hue.bridges[bridgeid]);
                 if (this._hue.instances[bridgeid] !== undefined) {
-                    delete this._hue.instances[bridgeid];
+                    delete(this._hue.instances[bridgeid]);
                 }
 
                 this._refreshPrefs = true;
@@ -1538,7 +1538,7 @@ var Prefs = class HuePrefs {
 
                 } else {
                     if (this._notifyLights[lightId] !== undefined) {
-                        delete this._notifyLights[lightId];
+                        delete(this._notifyLights[lightId]);
                     }
                 }
 
@@ -1602,7 +1602,7 @@ var Prefs = class HuePrefs {
                 }
 
                 value = Math.round(data["object"].value);
-                this._entertainment[data["bridgeid"]]["intensity"] = 254 - value + 40;
+                this._entertainment[data["bridgeid"]]["intensity"] = 255 - value + 40;
                 this.writeEntertainmentSettings();
                 break;
 

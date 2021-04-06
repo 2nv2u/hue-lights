@@ -121,7 +121,7 @@ var PhueMenu = GObject.registerClass({
         this._indicatorPositionBackUp = -1;
         this.setPositionInPanel();
 
-        this.colorPicker = null;
+        this.colorPicker = {};
 
         let icon = new St.Icon({
             gicon : Gio.icon_new_for_string(Me.dir.get_path() + '/media/HueIcons/devicesBridgesV2.svg'),
@@ -364,15 +364,34 @@ var PhueMenu = GObject.registerClass({
                 continue;
             }
 
-            if (this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"] === undefined) {
+            if (this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"] === undefined &&
+                this.bridesData[bridgeid]["lights"][lightid]["state"]["ct"] === undefined) {
                 continue;
             }
 
-            let [tmpR, tmpG, tmpB] = Utils.xyBriToColor(
-                this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"][0],
-                this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"][1],
-                255 /* or value["bri"] */
-            );
+            let tmpR = 0;
+            let tmpG = 0;
+            let tmpB = 0;
+            switch (this.bridesData[bridgeid]["lights"][lightid]["state"]["colormode"]) {
+
+                case "xy":
+                    [tmpR, tmpG, tmpB] = Utils.xyBriToColor(
+                        this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"][0],
+                        this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"][1],
+                        255 /* or value["bri"] */
+                    );
+                    break;
+
+                case "ct":
+                    let kelvin = Utils.ctToKelvin(
+                        this.bridesData[bridgeid]["lights"][lightid]["state"]["ct"]
+                    );
+                    [tmpR, tmpG, tmpB] = Utils.kelvinToRGB(kelvin);
+                    break;
+
+                default:
+                    break;
+            }
 
             r += tmpR;
             g += tmpG;
@@ -429,6 +448,61 @@ var PhueMenu = GObject.registerClass({
         }
 
         return value;
+    }
+
+    /**
+     * Checks if color (XY) or color temperature (CT) is available
+     * on group or light
+     * 
+     * @method _getColorAttributeLightOrGroup
+     * @param {String} bridgeid
+     * @param {String} type is "groups" or "lights"
+     * @param {Number} id of group or light
+     * @return {Object} array like [hasXY, hasCT]
+     */
+    _getColorAttributeLightOrGroup(bridgeid, type, id) {
+        let hasXY = true;
+        let hasCT = true;
+        let data = this.bridesData[bridgeid];
+
+        switch (type) {
+            case "lights":
+                hasXY = true;
+                hasCT = true;
+                if (data["lights"][id]["state"]["xy"] === undefined) {
+                    hasXY = false;
+                }
+
+                if (data["lights"][id]["state"]["ct"] === undefined) {
+                    hasCT = false;
+                }
+                break;
+
+            case "groups":
+                hasXY = false;
+                hasCT = false;
+
+                for (let lightid of data["groups"][id]["lights"]) {
+                    if (data["lights"][lightid]["state"]["xy"] !== undefined) {
+                        hasXY = true;
+                    }
+
+                    if (data["lights"][lightid]["state"]["ct"] !== undefined) {
+                        hasCT = true;
+                    }
+
+                    if (hasXY && hasCT) {
+                        /* no need to search more */
+                        break;
+                    }
+                }
+                break;
+
+            default:
+                break;
+        }
+
+        return [hasXY, hasCT];
     }
 
     /**
@@ -622,10 +696,10 @@ var PhueMenu = GObject.registerClass({
 
             case "entertainmentIntensity":
 
-                value = Math.round(object.value * 254);
+                value = Math.round(object.value * 255);
 
                 /* 40 is the reasonable minimum */
-                this._isStreaming[bridgeid]["intensity"] = 254 - value + 40;
+                this._isStreaming[bridgeid]["intensity"] = 255 - value + 40;
                 if (this._isStreaming[bridgeid]["entertainment"]) {
                     this._isStreaming[bridgeid]["entertainment"].setIntensity(
                         this._isStreaming[bridgeid]["intensity"]
@@ -635,7 +709,7 @@ var PhueMenu = GObject.registerClass({
 
             case "entertainmentBrightness":
 
-                value = Math.round(object.value * 254);
+                value = Math.round(object.value * 255);
 
                 this._isStreaming[bridgeid]["brightness"] = value;
                 if (this._isStreaming[bridgeid]["entertainment"]) {
@@ -678,7 +752,7 @@ var PhueMenu = GObject.registerClass({
 
             case "brightness-colorpicker":
 
-                data["object"] = this.colorPicker.brightness;
+                data["object"] = this.colorPicker[bridgeid].brightness;
                 object = data["object"];
                 /* no break here "brightness" continues */
 
@@ -686,7 +760,7 @@ var PhueMenu = GObject.registerClass({
 
                 parsedBridgePath[2] = parseInt(parsedBridgePath[2]);
 
-                value = Math.round(object.value * 254);
+                value = Math.round(object.value * 255);
                 if (value == 0) {
                     cmd = {"on": false, "bri": value};
                 } else {
@@ -722,37 +796,49 @@ var PhueMenu = GObject.registerClass({
 
             case "color-picker":
 
+                parsedBridgePath[2] = parseInt(parsedBridgePath[2]);
+
                 /* close the main manu */
                 this.menu.close(false);
 
-                if (this.colorPicker !== null) {
-                    this.colorPicker.destroy();
+                if (this.colorPicker[bridgeid] !== undefined) {
+                    this.colorPicker[bridgeid].destroy();
+                    delete(this.colorPicker[bridgeid]);
                 }
 
                 if (this._checkEntertainmentStream(bridgeid, parsedBridgePath)) {
                     break;
                 }
 
-                this.colorPicker = new ColorPicker.ColorPicker();
-                this.colorPicker.show();
-                this.colorPicker.connect("finish", () => {
-                    this.colorPicker = null;
+                let [hasXY, hasCT] = this._getColorAttributeLightOrGroup(
+                    bridgeid,
+                    parsedBridgePath[1],
+                    parsedBridgePath[2],
+                );
+
+                this.colorPicker[bridgeid] = new ColorPicker.ColorPicker({
+                    useColorWheel: hasXY,
+                    useWhiteBox: hasCT
+                });
+                this.colorPicker[bridgeid].show();
+                this.colorPicker[bridgeid].connect("finish", () => {
+                    delete(this.colorPicker[bridgeid]);
                 });
 
                 let dataColor = Object.assign({}, data);
                 dataColor["type"] = "set-color";
-                this.colorPicker.connect(
+                this.colorPicker[bridgeid].connect(
                     "color-picked",
                     this._menuEventHandler.bind(this, dataColor)
                 );
 
                 let dataBrightness = Object.assign({}, data);
                 dataBrightness["type"] = "brightness-colorpicker";
-                this.colorPicker.connect(
+                this.colorPicker[bridgeid].connect(
                     "brightness-picked",
                     this._menuEventHandler.bind(this, dataBrightness)
                 );
-                this.colorPicker.newPosition();
+                this.colorPicker[bridgeid].newPosition();
 
                 break;
 
@@ -761,17 +847,15 @@ var PhueMenu = GObject.registerClass({
                 parsedBridgePath[2] = parseInt(parsedBridgePath[2]);
 
                 value = Utils.colorToHueXY(
-                    this.colorPicker.r,
-                    this.colorPicker.g,
-                    this.colorPicker.b
+                    this.colorPicker[bridgeid].r,
+                    this.colorPicker[bridgeid].g,
+                    this.colorPicker[bridgeid].b
                 );
-                colorTemperature = this.colorPicker.colorTemperature;
+                colorTemperature = this.colorPicker[bridgeid].colorTemperature;
 
                 cmd = {"on": true};
 
-                if (colorTemperature > 0 &&
-                    this.colorPicker.isWhiteTemperature) {
-
+                if (colorTemperature > 0) {
                     cmd["ct"] = Utils.kelvinToCt(colorTemperature);
                 } else {
                     cmd["xy"] = value;
@@ -1253,7 +1337,7 @@ var PhueMenu = GObject.registerClass({
         slider.set_width(150);
         slider.set_x_align(Clutter.ActorAlign.START);
         slider.set_x_expand(false);
-        slider.value = 100/254;
+        slider.value = 100/255;
 
         this._createSliderColor(slider, bridgeid, lightid, groupid, tmp);
 
@@ -1356,11 +1440,15 @@ var PhueMenu = GObject.registerClass({
 
         let bridgePath = "";
 
-        if (groupid === null && this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"] === undefined) {
+        if (groupid === null &&
+            this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"] === undefined &&
+            this.bridesData[bridgeid]["lights"][lightid]["state"]["ct"] === undefined) {
             return;
         }
 
-        if (groupid !== null && this.bridesData[bridgeid]["groups"][groupid]["action"]["xy"] === undefined) {
+        if (groupid !== null &&
+            this.bridesData[bridgeid]["groups"][groupid]["action"]["xy"] === undefined &&
+            this.bridesData[bridgeid]["groups"][groupid]["action"]["ct"] === undefined) {
             return;
         }
 
@@ -1474,9 +1562,21 @@ var PhueMenu = GObject.registerClass({
 
                     controlItem.remove_child(controlItem.label);
 
-                    let colorPickerBox = new ColorPicker.ColorPickerBox();
+                    let [hasXY, hasCT] = this._getColorAttributeLightOrGroup(
+                        bridgeid,
+                        groupid === null ? "lights": "groups",
+                        groupid === null ? lightid: groupid
+                    );
 
-                    this.colorPicker = colorPickerBox;
+                    let colorPickerBox = new ColorPicker.ColorPickerBox({
+                        useColorWheel: hasXY,
+                        useWhiteBox: hasCT
+                    });
+
+                    if (this.colorPicker[bridgeid] !== undefined) {
+                        delete(this.colorPicker[bridgeid]);
+                    }
+                    this.colorPicker[bridgeid] = colorPickerBox;
 
                     let dataColor = {
                         "bridgeid": bridgeid,
@@ -2014,12 +2114,24 @@ var PhueMenu = GObject.registerClass({
 
         controlItem.remove_child(controlItem.label);
 
-        let colorPickerBox = new ColorPicker.ColorPickerBox();
+        let [hasXY, hasCT] = this._getColorAttributeLightOrGroup(
+            bridgeid,
+            "groups",
+            groupid
+        );
+
+        let colorPickerBox = new ColorPicker.ColorPickerBox({
+            useColorWheel: hasXY,
+            useWhiteBox: hasCT
+        });
         controlItem.add(colorPickerBox.createColorBox());
 
         let bridgePath = `${this._rndID()}::groups::${groupid}::action::hue`;
 
-        this.colorPicker = colorPickerBox;
+        if (this.colorPicker[bridgeid] !== undefined) {
+            delete(this.colorPicker[bridgeid]);
+        }
+        this.colorPicker[bridgeid] = colorPickerBox;
 
         let dataColor = {
             "bridgeid": bridgeid,
@@ -2926,14 +3038,14 @@ var PhueMenu = GObject.registerClass({
         let entertainmentIntensityItem = this._createEntertainmentSliderItem(
             bridgeid,
             "Intensity",
-            ((254 - this._isStreaming[bridgeid]["intensity"] - 40)) / 100
+            ((255 - this._isStreaming[bridgeid]["intensity"] - 40)) / 100
         );
         entertainmentMainItem.menu.addMenuItem(entertainmentIntensityItem);
 
         let entertainmentBrightnessItem = this._createEntertainmentSliderItem(
             bridgeid,
             "Brightness",
-            this._isStreaming[bridgeid]["brightness"] / 254
+            this._isStreaming[bridgeid]["brightness"] / 255
         );
         entertainmentMainItem.menu.addMenuItem(entertainmentBrightnessItem);
 
@@ -3366,6 +3478,15 @@ var PhueMenu = GObject.registerClass({
 
             parsedBridgePath = bridgePath.split("::");
 
+            if (parsedBridgePath[1] === "groups" &&
+                parsedBridgePath[2] === "0" &&
+                    (this.bridesData[bridgeid]["groups"][0] === undefined ||
+                    this.bridesData[bridgeid]["groups"][0].length === 0)) {
+
+                /* group zero is not loaded, skipping for now */
+                continue;
+            }
+
             switch (type) {
 
                 case "switch":
@@ -3455,11 +3576,26 @@ var PhueMenu = GObject.registerClass({
                     let b = 0;
 
                     if (parsedBridgePath[1] === "lights") {
-                        [r, g, b] = Utils.xyBriToColor(
-                            value["xy"][0],
-                            value["xy"][1],
-                            255 /* or value["bri"] */
-                        );
+                        switch (value["colormode"]) {
+
+                            case "xy":
+                                [r, g, b] = Utils.xyBriToColor(
+                                    value["xy"][0],
+                                    value["xy"][1],
+                                    255 /* or value["bri"] */
+                                );
+                                break;
+
+                            case "ct":
+                                let kelvin = Utils.ctToKelvin(value["ct"]);
+                                [r, g, b] = Utils.kelvinToRGB(kelvin);
+                                break;
+
+                            default:
+                                return;
+                        }
+
+
                     }
 
                     if (parsedBridgePath[1] === "groups") {
@@ -3695,7 +3831,7 @@ var PhueMenu = GObject.registerClass({
 
                 this._isStreaming[bridgeid]["brightness"] = this._entertainment[bridgeid]["bri"];
             } else {
-                this._isStreaming[bridgeid]["brightness"] = 254;
+                this._isStreaming[bridgeid]["brightness"] = 255;
             }
 
             if (this._entertainment[bridgeid] !== undefined &&
@@ -3944,7 +4080,6 @@ var PhueMenu = GObject.registerClass({
         let bridgeItems = [];
         let oldItems = this.menu._getMenuItems();
         let instanceCounter = 0;
-        this.colorPicker = null;
         this._openMenuDefault = null;
         this.refreshMenuObjects = {};
 
@@ -3953,6 +4088,14 @@ var PhueMenu = GObject.registerClass({
         this.hue.enableAsyncMode();
 
         this._bridgesInMenu = this.getBridgesInMenu(this._bridgesInMenu);
+
+        for (let bridgeid in this.colorPicker){
+            if (this.colorPicker[bridgeid].destroy) {
+                /* destroy modal dialog if exists */
+                this.colorPicker[bridgeid].destroy();
+            }
+            delete(this.colorPicker[bridgeid]);
+        }
 
         for (let item in oldItems){
             oldItems[item].destroy();
@@ -4117,7 +4260,7 @@ var PhueMenu = GObject.registerClass({
                     continue;
                 }
 
-                let bri = 254;
+                let bri = 255;
                 if (this._notifyLights[i]["bri"] !== undefined) {
                     bri = this._notifyLights[i]["bri"];
                 }

@@ -253,6 +253,121 @@ function kelvinToRGB(kelvin) {
 }
 
 /**
+ * Converts RGB to the closest kelvin in table
+ * 
+ * @method RGBToKelvin
+ * @param {Number} red
+ * @param {Number} green
+ * @param {Number} blue
+ * @return {Object} kelvin in temperature
+ */
+function RGBToKelvin(r, g, b) {
+    let selectR = -1;
+    let selectG = -1;
+    let selectB = -1;
+    let difference;
+
+    /* https://andi-siess.de/rgb-to-color-temperature/ */
+    const whiteTemeratures = {
+        2200: [255,147,44],
+        2426: [255,154,57],
+        2652: [255,161,70],
+        2878: [255,167,84],
+        3104: [255,174,97],
+        3330: [255,181,110],
+        3556: [255,188,123],
+        3782: [255,194,136],
+        4008: [255,201,150],
+        4234: [255,208,163],
+        4460: [255,215,176],
+        4686: [255,221,189],
+        4912: [255,228,202],
+        5138: [255,235,215],
+        5364: [255,242,227],
+        5590: [255,248,242],
+        5813: [255,255,255],
+        6036: [252,253,255],
+        6262: [249,251,255],
+        6488: [246,249,255],
+        6714: [243,247,255],
+        6940: [240,245,255],
+        7166: [237,243,255],
+        7392: [234,241,255],
+        7618: [232,239,255],
+        7844: [229,236,255],
+        8070: [226,234,255],
+        8296: [223,232,255],
+        8522: [220,230,255],
+        8748: [217,228,255],
+        8974: [214,226,255],
+        9200: [211,224,255]
+    }
+
+    difference = 255;
+    for (let i in whiteTemeratures) {
+        let tmp = r - whiteTemeratures[i][0];
+        if (tmp < 0) { tmp = tmp * -1; }
+
+        if (tmp < difference) {
+            difference = tmp;
+            selectR = whiteTemeratures[i][0];
+        }
+    }
+
+    difference = 255;
+    for (let i in whiteTemeratures) {
+        if (whiteTemeratures[i][0] !== selectR) {
+            continue;
+        }
+
+        let tmp = g - whiteTemeratures[i][1];
+        if (tmp < 0) { tmp = tmp * -1; }
+
+        if (tmp < difference) {
+            difference = tmp;
+            selectG = whiteTemeratures[i][1];
+        }
+    }
+
+    difference = 255;
+    for (let i in whiteTemeratures) {
+        if (whiteTemeratures[i][0] !== selectR) {
+            continue;
+        }
+
+        if (whiteTemeratures[i][1] !== selectG) {
+            continue;
+        }
+
+        let tmp = b - whiteTemeratures[i][2];
+        if (tmp < 0) { tmp = tmp * -1; }
+
+        if (tmp < difference) {
+            difference = tmp;
+            selectB = whiteTemeratures[i][2];
+        }
+    }
+
+    for (let i in whiteTemeratures) {
+        if (whiteTemeratures[i][0] !== selectR) {
+            continue;
+        }
+
+        if (whiteTemeratures[i][1] !== selectG) {
+            continue;
+        }
+
+        if (whiteTemeratures[i][2] !== selectB) {
+            continue;
+        }
+
+        return i;
+    }
+
+    return 0;
+}
+
+/**
  * Converts RGB to xy values for Philips Hue Lights.
  * https://stackoverflow.com/questions/22564187/rgb-to-philips-hue-hsb 
  * https://github.com/PhilipsHue/PhilipsHueSDK-iOS-OSX/commit/f41091cf671e13fe8c32fcced12604cd31cceaf3 
@@ -347,13 +462,10 @@ function xyBriToColor(x, y, bri){
     g /= maxValue;
     b /= maxValue;
 
-    r = r * 255; if (r < 0) { r = 255 };
-    g = g * 255; if (g < 0) { g = 255 };
-    b = b * 255; if (b < 0) { b = 255 };
-
-    if (r > 1) {r = r - 1};
-    if (g > 1) {g = g - 1};
-    if (b > 1) {b = b - 1};
+     /* do not know why thay have if (r < 0) { r = 255 }; this works better */
+    r = r * 255; if (r < 0) { r *= -1 };
+    g = g * 255; if (g < 0) { g *= -1 };
+    b = b * 255; if (b < 0) { b *= -1 };
 
     r = Math.round(r);
     g = Math.round(g);
