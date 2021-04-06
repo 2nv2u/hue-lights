@@ -2104,6 +2104,8 @@ var PhueMenu = GObject.registerClass({
             );
         }
 
+        this._compactBridgesMenu[bridgeid]["control"]["object"].visible = false;
+
         this._compactBridgesMenu[bridgeid]["control"]["object"].menu.removeAll();
 
         this._compactBridgesMenu[bridgeid]["control"]["object"].label.text = _("Control");
@@ -2119,6 +2121,10 @@ var PhueMenu = GObject.registerClass({
             "groups",
             groupid
         );
+
+        if (hasXY || hasCT) {
+            this._compactBridgesMenu[bridgeid]["control"]["object"].visible = true;
+        }
 
         let colorPickerBox = new ColorPicker.ColorPickerBox({
             useColorWheel: hasXY,
