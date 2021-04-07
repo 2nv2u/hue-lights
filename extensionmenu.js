@@ -1562,6 +1562,8 @@ var PhueMenu = GObject.registerClass({
 
                     controlItem.remove_child(controlItem.label);
 
+                    this._compactBridgesMenu[bridgeid]["control"]["object"].visible = true;
+
                     let [hasXY, hasCT] = this._getColorAttributeLightOrGroup(
                         bridgeid,
                         groupid === null ? "lights": "groups",
@@ -1608,12 +1610,16 @@ var PhueMenu = GObject.registerClass({
                         this._compactBridgesMenu[bridgeid]["control"]["object"].remove_child(
                             this._compactBridgesMenu[bridgeid]["control"]["switch"]
                         );
+
+                        this._compactBridgesMenu[bridgeid]["control"]["switch"] = null;
                     }
 
                     if (this._compactBridgesMenu[bridgeid]["control"]["slider"] != null){
                         this._compactBridgesMenu[bridgeid]["control"]["box"].remove_child(
                             this._compactBridgesMenu[bridgeid]["control"]["slider"]
                         );
+
+                        this._compactBridgesMenu[bridgeid]["control"]["slider"] = null;
                     }
 
                     /**
@@ -1895,13 +1901,35 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
+     * Gets the name for a group from data.
+     * 
+     * @method _getGroupName
+     * @param {String} bridgeid
+     * @param {String} groupid
+     * @return {Object} icon or null
+     */
+    _getGroupName(bridgeid, groupid) {
+
+        let groupName = _("no data");
+
+        if (groupid === "0") {
+            groupName = _("Rooms & Zones");
+        } else {
+            groupName = this.bridesData[bridgeid]["groups"][groupid]["name"];
+        }
+
+        return groupName;
+    }
+
+    /**
      * Tries to determine icon for group from class
      * 
      * @method _tryGetGroupIcon
-     * @param {Object} group data
+     * @param {String} bridgeid
+     * @param {String} groupid
      * @return {Object} icon or null
      */
-    _tryGetGroupIcon(groupData) {
+    _tryGetGroupIcon(bridgeid, groupid) {
 
         let iconPath = "";
 
@@ -1909,16 +1937,21 @@ var PhueMenu = GObject.registerClass({
             return null;
         }
 
+        if (groupid === "0") {
+            iconPath = Me.dir.get_path() + `/media/HueIcons/roomsOther.svg`;
+        } else {
+            let groupData = this.bridesData[bridgeid]["groups"][groupid];
 
-        if (groupData["class"] === undefined) {
-            return null;
+            if (groupData["class"] === undefined) {
+                return null;
+            }
+
+            if (Utils.getHueIconFile[groupData["class"]] === undefined) {
+                return null;
+            }
+
+            iconPath = Me.dir.get_path() + `/media/HueIcons/${Utils.getHueIconFile[groupData["class"]]}.svg`
         }
-
-        if (Utils.getHueIconFile[groupData["class"]] === undefined) {
-            return null;
-        }
-
-        iconPath = Me.dir.get_path() + `/media/HueIcons/${Utils.getHueIconFile[groupData["class"]]}.svg`
 
         return this._getIconByPath(iconPath);
     }
@@ -1983,107 +2016,6 @@ var PhueMenu = GObject.registerClass({
 
     /**
      * Using compact menu, this function will set
-     * the group menu to default group 0
-     * 
-     * @method _setCompactMenuZeroGroup
-     * @param {String} bridgeid
-     */
-    _setCompactMenuZeroGroup(bridgeid) {
-
-        if (this._compactBridgesMenu[bridgeid]["groups"]["icon"] != null){
-            this._compactBridgesMenu[bridgeid]["groups"]["object"].remove_child(
-                this._compactBridgesMenu[bridgeid]["groups"]["icon"]
-            );
-        }
-
-        if (this._compactBridgesMenu[bridgeid]["groups"]["switch"] != null){
-            this._compactBridgesMenu[bridgeid]["groups"]["object"].remove_child(
-                this._compactBridgesMenu[bridgeid]["groups"]["switch"]
-            );
-        }
-
-        if (this._compactBridgesMenu[bridgeid]["groups"]["slider"] != null){
-            this._compactBridgesMenu[bridgeid]["groups"]["box"].remove_child(
-                this._compactBridgesMenu[bridgeid]["groups"]["slider"]
-            );
-        }
-
-        this._compactBridgesMenu[bridgeid]["groups"]["object"].label.text = _("Rooms & Zones");
-        
-        let groupsIcon = null;
-        if (this._iconPack !== PhueIconPack.NONE) {
-            let iconPath = "";
-
-            iconPath = Me.dir.get_path() + `/media/HueIcons/roomsOther.svg`
-
-            groupsIcon = this._getIconByPath(iconPath);
-        }
-
-        if (groupsIcon !== null) {
-            this._compactBridgesMenu[bridgeid]["groups"]["object"].insert_child_at_index(groupsIcon, 1);
-        }
-
-        let groupSlider = this._createBrightnessSlider(bridgeid, null, 0, true);
-        this._compactBridgesMenu[bridgeid]["groups"]["box"].add(groupSlider);
-        
-        let groupSwitch = this._createGroupSwitch(bridgeid, 0, true);
-        this._compactBridgesMenu[bridgeid]["groups"]["object"].add(groupSwitch);
-
-        this._compactBridgesMenu[bridgeid]["groups"]["icon"] = groupsIcon;
-        this._compactBridgesMenu[bridgeid]["groups"]["switch"] = groupSwitch;
-        this._compactBridgesMenu[bridgeid]["groups"]["slider"] = groupSlider;
-    }
-
-    /**
-     * Using compact menu, this function will set
-     * the lights menu to default group 0
-     * 
-     * @method _setCompactMenuZeroLights
-     * @param {String} bridgeid
-     * @param {Object} data wor creating lights
-     */
-    _setCompactMenuZeroLights(bridgeid, data) {
-
-        let groupid = 0;
-
-        if (this._compactBridgesMenu[bridgeid]["lights"]["switch"] != null){
-            this._compactBridgesMenu[bridgeid]["lights"]["object"].remove_child(
-                this._compactBridgesMenu[bridgeid]["lights"]["switch"]
-            );
-        }
-
-        if (this._compactBridgesMenu[bridgeid]["lights"]["slider"] != null){
-            this._compactBridgesMenu[bridgeid]["lights"]["box"].remove_child(
-                this._compactBridgesMenu[bridgeid]["lights"]["slider"]
-            );
-        }
-
-        this._compactBridgesMenu[bridgeid]["lights"]["object"].label.text = _("Lights");
-
-        let groupSwitch = this._createLightSwitch(bridgeid, null, groupid);
-        this._compactBridgesMenu[bridgeid]["lights"]["object"].add(groupSwitch);
-
-        this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.removeAll();
-
-        let lightItems = this._createMenuLights(
-            bridgeid,
-            data,
-            data["groups"][groupid]["lights"],
-            groupid,
-            "lights"
-        );
-
-        for (let lightItem in lightItems) {
-            this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.addMenuItem(
-                lightItems[lightItem]
-            );
-        }
-
-        this._compactBridgesMenu[bridgeid]["lights"]["switch"] = groupSwitch;
-    }
-
-    /**
-     * Using compact menu, this function will set
      * the control menu to desired group.
      * 
      * @method _setCompactMenuGroupControl
@@ -2096,12 +2028,16 @@ var PhueMenu = GObject.registerClass({
             this._compactBridgesMenu[bridgeid]["control"]["object"].remove_child(
                 this._compactBridgesMenu[bridgeid]["control"]["switch"]
             );
+
+            this._compactBridgesMenu[bridgeid]["control"]["switch"] = null;
         }
 
         if (this._compactBridgesMenu[bridgeid]["control"]["slider"] != null){
             this._compactBridgesMenu[bridgeid]["control"]["box"].remove_child(
                 this._compactBridgesMenu[bridgeid]["control"]["slider"]
             );
+
+            this._compactBridgesMenu[bridgeid]["control"]["slider"] = null;
         }
 
         this._compactBridgesMenu[bridgeid]["control"]["object"].visible = false;
@@ -2165,97 +2101,6 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
-     * Using compact menu, this function will set
-     * the control menu to the group 0.
-     * 
-     * @method _setCompactMenuZeroControl
-     * @param {String} bridgeid
-     */
-    _setCompactMenuZeroControl(bridgeid) {
-        this._setCompactMenuGroupControl(bridgeid, 0);
-    }
-
-    /**
-     * Creates zero item - 'back to Rooms and zones' button
-     * 
-     * @method _compactMenuCreateZeroItem
-     * @param {String} bridgeid
-     */
-    _compactMenuCreateZeroItem(bridgeid) {
-
-        let zeroItem = new PopupMenu.PopupMenuItem(
-            _("Rooms & Zones")
-        );
-
-        let label = zeroItem.label
-        zeroItem.remove_child(zeroItem.label);
-        let itemBox = new St.BoxLayout();
-        itemBox.vertical = true;
-        itemBox.add(label);
-        zeroItem.insert_child_at_index(itemBox, 1);
-
-        let groupsIcon = null;
-        if (this._iconPack !== PhueIconPack.NONE) {
-            let iconPath = "";
-
-            iconPath = Me.dir.get_path() + `/media/HueIcons/roomsOther.svg`
-
-            groupsIcon = this._getIconByPath(iconPath);
-        }
-
-        if (groupsIcon !== null) {
-            zeroItem.insert_child_at_index(groupsIcon, 1);
-        }
-
-        itemBox.add(this._createBrightnessSlider(bridgeid, null, 0, false));
-        zeroItem.add(this._createGroupSwitch(bridgeid, 0, false));
-
-        zeroItem.x_align = Clutter.ActorAlign.FILL;
-        zeroItem.x_expand = true;
-        zeroItem.label.set_x_expand(true);
-
-        zeroItem.connect (
-            'button-press-event',
-            () => {
-                this._compactMenuClearTmpObjects(bridgeid);
-
-                this._setCompactMenuZeroGroup(bridgeid);
-                this._setCompactMenuZeroLights(bridgeid, this.bridesData[bridgeid]);
-                this._setCompactMenuZeroControl(bridgeid);
-
-                /**
-                 * ask for async all data,
-                 * which will invoke refreshMenu
-                 */
-                this.hue.instances[bridgeid].getAll();
-            }
-        );
-
-        zeroItem.originalActivate = zeroItem.activate;
-        zeroItem.activate = (event) => {
-            if (this._compactMenuRemember) {
-                this._openMenuDefault = this._compactBridgesMenu[bridgeid]["groups"]["object"].menu;
-            }
-
-            this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.open(true);
-
-            this._compactBridgesMenu[bridgeid]["hidden-item"].visible = true;
-
-            zeroItem.visible = false;
-            this._compactBridgesMenu[bridgeid]["hidden-item"] = zeroItem;
-
-            this._compactBridgesMenu[bridgeid]["scenes"]["object"].visible = false;
-
-            return zeroItem.originalActivate(event);
-        }
-
-        zeroItem.visible = false;
-        this._compactBridgesMenu[bridgeid]["hidden-item"] = zeroItem;
-
-        return zeroItem;
-    }
-
-    /**
      * Clear tmp items in refresh list.
      * So destroyed items will not be attempted
      * to be refreshed.
@@ -2266,12 +2111,133 @@ var PhueMenu = GObject.registerClass({
     _compactMenuClearTmpObjects(bridgeid) {
         /* remove previously created object from refreshing */
         for (let i in this.refreshMenuObjects) {
-            if (this.refreshMenuObjects[i]["tmp"] &&
-                this.refreshMenuObjects[i]["bridgeid"] === bridgeid) {
+            if (!this.refreshMenuObjects[i]["tmp"]) {
+                continue;
+            }
 
-                delete (this.refreshMenuObjects[i]);
+            if (this.refreshMenuObjects[i]["bridgeid"] !== bridgeid) {
+                continue;
+
+            }
+
+            delete (this.refreshMenuObjects[i]);
+        }
+    }
+
+    /**
+     * Select group in compact menu.
+     * 
+     * @method _selectCompactMenuGroup
+     * @param {String} bridgeid 
+     * @param {String} groupid
+     */
+    _selectCompactMenuGroup(bridgeid, groupid) {
+        let groupIcon = null;
+        let data = this.bridesData[bridgeid];;
+
+        this._compactBridgesMenu[bridgeid]["selected-group"] = groupid;
+
+        this._compactMenuClearTmpObjects(bridgeid);
+
+        if (this._compactBridgesMenu[bridgeid]["groups"]["icon"] != null){
+            this._compactBridgesMenu[bridgeid]["groups"]["object"].remove_child(
+                this._compactBridgesMenu[bridgeid]["groups"]["icon"]
+            );
+
+            this._compactBridgesMenu[bridgeid]["groups"]["icon"] = null;
+        }
+
+        if (this._compactBridgesMenu[bridgeid]["groups"]["switch"] != null){
+            this._compactBridgesMenu[bridgeid]["groups"]["object"].remove_child(
+                this._compactBridgesMenu[bridgeid]["groups"]["switch"]
+            );
+
+            this._compactBridgesMenu[bridgeid]["groups"]["switch"] = null;
+        }
+
+        if (this._compactBridgesMenu[bridgeid]["groups"]["slider"] != null){
+            this._compactBridgesMenu[bridgeid]["groups"]["box"].remove_child(
+                this._compactBridgesMenu[bridgeid]["groups"]["slider"]
+            );
+
+            this._compactBridgesMenu[bridgeid]["groups"]["slider"] = null;
+        }
+
+        let groupSlider = this._createBrightnessSlider(bridgeid, null, groupid, true);
+        this._compactBridgesMenu[bridgeid]["groups"]["box"].insert_child_at_index(groupSlider, 1);
+        this._compactBridgesMenu[bridgeid]["groups"]["slider"] = groupSlider;
+
+        groupIcon = this._tryGetGroupIcon(bridgeid, groupid);
+
+        if (groupIcon !== null) {
+            this._compactBridgesMenu[bridgeid]["groups"]["object"].insert_child_at_index(groupIcon, 1);
+            this._compactBridgesMenu[bridgeid]["groups"]["icon"] = groupIcon;
+        }
+
+        this._compactBridgesMenu[bridgeid]["groups"]["object"].label.text = this._getGroupName(bridgeid, groupid);
+
+        let groupSwitch = this._createGroupSwitch(bridgeid, groupid, true);
+        this._compactBridgesMenu[bridgeid]["groups"]["object"].add(groupSwitch);
+        this._compactBridgesMenu[bridgeid]["groups"]["switch"] = groupSwitch;
+
+        /* lights */
+        this._compactBridgesMenu[bridgeid]["lights"]["object"].label.text = _("Lights");
+
+        if (this._compactBridgesMenu[bridgeid]["lights"]["switch"] != null){
+            this._compactBridgesMenu[bridgeid]["lights"]["object"].remove_child(
+                this._compactBridgesMenu[bridgeid]["lights"]["switch"]
+            );
+
+            this._compactBridgesMenu[bridgeid]["lights"]["switch"] = null;
+        }
+
+        groupSwitch = this._createLightSwitch(bridgeid, null, groupid);
+        this._compactBridgesMenu[bridgeid]["lights"]["object"].add(groupSwitch);
+        this._compactBridgesMenu[bridgeid]["lights"]["switch"] = groupSwitch;
+
+        this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.removeAll();
+
+        let lightItems = this._createMenuLights(
+            bridgeid,
+            data,
+            data["groups"][groupid]["lights"],
+            groupid,
+            "lights"
+        );
+        for (let lightItem in lightItems) {
+            this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.addMenuItem(lightItems[lightItem]);
+        }
+
+        /* scenes */
+        if (this._showScenes && this._compactBridgesMenu[bridgeid]["scenes"] !== undefined) {
+            this._compactBridgesMenu[bridgeid]["scenes"]["object"].menu.removeAll();
+
+            this._compactBridgesMenu[bridgeid]["scenes"]["object"].visible = true;
+
+            let scenesItems = this._createMenuLights(
+                bridgeid,
+                data,
+                data["groups"][groupid]["lights"],
+                groupid,
+                "scenes"
+            );
+            for (let sceneItem in scenesItems) {
+                this._compactBridgesMenu[bridgeid]["scenes"]["object"].menu.addMenuItem(scenesItems[sceneItem]);
+            }
+
+            if (groupid === "0") {
+                this._compactBridgesMenu[bridgeid]["scenes"]["object"].visible = false;
             }
         }
+
+        /* control */
+        this._setCompactMenuGroupControl(bridgeid, groupid);
+
+        /**
+         * ask for async all data,
+         * which will invoke refreshMenu
+         */
+        this.hue.instances[bridgeid].getAll();
     }
 
     /**
@@ -2299,8 +2265,14 @@ var PhueMenu = GObject.registerClass({
                 continue;
             }
 
+            if (data["groups"][groupid]["type"] === "LightGroup" &&
+                groupid !== "0") {
+                /* With type "LightGroup", we show only group 0 with all lights */
+                continue;
+            }
+
             let groupItem = new PopupMenu.PopupMenuItem(
-                data["groups"][groupid]["name"]
+                this._getGroupName(bridgeid, groupid)
             );
 
             let label = groupItem.label
@@ -2311,7 +2283,7 @@ var PhueMenu = GObject.registerClass({
             itemBox.add(this._createBrightnessSlider(bridgeid, null, groupid));
             groupItem.insert_child_at_index(itemBox, 1);
 
-            groupIcon = this._tryGetGroupIcon(data["groups"][groupid]);
+            groupIcon = this._tryGetGroupIcon(bridgeid, groupid);
             if (groupIcon !== null) {
                 groupItem.insert_child_at_index(groupIcon, 1);
             }
@@ -2324,97 +2296,7 @@ var PhueMenu = GObject.registerClass({
             groupItem.connect(
                 'button-press-event',
                 () => {
-                    this._compactBridgesMenu[bridgeid]["selected-group"] = groupid;
-
-                    this._compactMenuClearTmpObjects(bridgeid);
-
-                    if (this._compactBridgesMenu[bridgeid]["groups"]["icon"] != null){
-                        this._compactBridgesMenu[bridgeid]["groups"]["object"].remove_child(
-                            this._compactBridgesMenu[bridgeid]["groups"]["icon"]
-                        );
-                    }
-
-                    if (this._compactBridgesMenu[bridgeid]["groups"]["switch"] != null){
-                        this._compactBridgesMenu[bridgeid]["groups"]["object"].remove_child(
-                            this._compactBridgesMenu[bridgeid]["groups"]["switch"]
-                        );
-                    }
-
-                    if (this._compactBridgesMenu[bridgeid]["groups"]["slider"] != null){
-                        this._compactBridgesMenu[bridgeid]["groups"]["box"].remove_child(
-                            this._compactBridgesMenu[bridgeid]["groups"]["slider"]
-                        );
-                    }
-
-                    let groupSlider = this._createBrightnessSlider(bridgeid, null, groupid, true);
-                    this._compactBridgesMenu[bridgeid]["groups"]["box"].insert_child_at_index(groupSlider, 1);
-                    this._compactBridgesMenu[bridgeid]["groups"]["slider"] = groupSlider;
-
-                    groupIcon = this._tryGetGroupIcon(data["groups"][groupid]);
-
-                    if (groupIcon !== null) {
-                        this._compactBridgesMenu[bridgeid]["groups"]["object"].insert_child_at_index(groupIcon, 1);
-                        this._compactBridgesMenu[bridgeid]["groups"]["icon"] = groupIcon;
-                    }
-
-                    this._compactBridgesMenu[bridgeid]["groups"]["object"].label.text = data["groups"][groupid]["name"];
-
-                    let groupSwitch = this._createGroupSwitch(bridgeid, groupid, true);
-                    this._compactBridgesMenu[bridgeid]["groups"]["object"].add(groupSwitch);
-                    this._compactBridgesMenu[bridgeid]["groups"]["switch"] = groupSwitch;
-
-                    /* lights */
-                    this._compactBridgesMenu[bridgeid]["lights"]["object"].label.text = _("Lights");
-
-                    if (this._compactBridgesMenu[bridgeid]["lights"]["switch"] != null){
-                        this._compactBridgesMenu[bridgeid]["lights"]["object"].remove_child(
-                            this._compactBridgesMenu[bridgeid]["lights"]["switch"]
-                        );
-                    }
-
-                    groupSwitch = this._createLightSwitch(bridgeid, null, groupid);
-                    this._compactBridgesMenu[bridgeid]["lights"]["object"].add(groupSwitch);
-                    this._compactBridgesMenu[bridgeid]["lights"]["switch"] = groupSwitch;
-
-                    this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.removeAll();
-
-                    let lightItems = this._createMenuLights(
-                        bridgeid,
-                        data,
-                        data["groups"][groupid]["lights"],
-                        groupid,
-                        "lights"
-                    );
-                    for (let lightItem in lightItems) {
-                        this._compactBridgesMenu[bridgeid]["lights"]["object"].menu.addMenuItem(lightItems[lightItem]);
-                    }
-
-                    /* scenes */
-                    if (this._showScenes && this._compactBridgesMenu[bridgeid]["scenes"] !== undefined) {
-                        this._compactBridgesMenu[bridgeid]["scenes"]["object"].menu.removeAll();
-
-                        this._compactBridgesMenu[bridgeid]["scenes"]["object"].visible = true;
-
-                        let scenesItems = this._createMenuLights(
-                            bridgeid,
-                            data,
-                            data["groups"][groupid]["lights"],
-                            groupid,
-                            "scenes"
-                        );
-                        for (let sceneItem in scenesItems) {
-                            this._compactBridgesMenu[bridgeid]["scenes"]["object"].menu.addMenuItem(scenesItems[sceneItem]);
-                        }
-                    }
-
-                    /* control */
-                    this._setCompactMenuGroupControl(bridgeid, groupid);
-
-                    /**
-                     * ask for async all data,
-                     * which will invoke refreshMenu
-                     */
-                    this.hue.instances[bridgeid].getAll();
+                    this._selectCompactMenuGroup(bridgeid, groupid);
                 }
             );
 
@@ -2432,6 +2314,11 @@ var PhueMenu = GObject.registerClass({
                 this._compactBridgesMenu[bridgeid]["hidden-item"] = groupItem;
 
                 return groupItem.originalActivate(event);
+            }
+
+            if (groupid === "0") {
+                groupItem.visible = false;
+                this._compactBridgesMenu[bridgeid]["hidden-item"] = groupItem;
             }
 
             menuItems.push(groupItem);
@@ -2460,7 +2347,7 @@ var PhueMenu = GObject.registerClass({
         this._compactBridgesMenu[bridgeid] = {};
 
         let groupsSubMenu = new PopupMenu.PopupSubMenuMenuItem(
-            _("Rooms & Zones")
+            _("No group selected")
         );
 
         /* disable closing menu on item activated */
@@ -2473,29 +2360,14 @@ var PhueMenu = GObject.registerClass({
         itemBox.add(label);
         groupsSubMenu.insert_child_at_index(itemBox, 1);
 
-        let groupsIcon = null;
-        if (this._iconPack !== PhueIconPack.NONE) {
-            let iconPath = "";
-
-            iconPath = Me.dir.get_path() + `/media/HueIcons/roomsOther.svg`
-
-            groupsIcon = this._getIconByPath(iconPath);
-        }
-
-        if (groupsIcon !== null) {
-            groupsSubMenu.insert_child_at_index(groupsIcon, 1);
-        }
-
         this._compactBridgesMenu[bridgeid]["groups"] = {}
         this._compactBridgesMenu[bridgeid]["groups"]["object"] = groupsSubMenu;
-        this._compactBridgesMenu[bridgeid]["groups"]["icon"] = groupsIcon;
+        this._compactBridgesMenu[bridgeid]["groups"]["icon"] = null;
         this._compactBridgesMenu[bridgeid]["groups"]["box"] = itemBox;
         this._compactBridgesMenu[bridgeid]["groups"]["switch"] = null;
         this._compactBridgesMenu[bridgeid]["groups"]["slider"] = null;
         this._compactBridgesMenu[bridgeid]["selected-group"] = null;
         this._compactBridgesMenu[bridgeid]["selected-light"] = null;
-
-        this._setCompactMenuZeroGroup(bridgeid);
 
         this._openMenuDefault = groupsSubMenu.menu;
 
@@ -2516,12 +2388,12 @@ var PhueMenu = GObject.registerClass({
 
         menuItems.push(groupsSubMenu);
 
-        groupsSubMenu.menu.addMenuItem(
-            this._compactMenuCreateZeroItem(bridgeid)
+        items = items.concat(
+            this._createCompactGroups(bridgeid, data, "LightGroup")
         );
 
-        groupsSubMenu.menu.addMenuItem(
-            new PopupMenu.PopupSeparatorMenuItem()
+        items = items.concat(
+            [new PopupMenu.PopupSeparatorMenuItem()]
         );
 
         if (this._zonesFirst) {
@@ -2626,8 +2498,6 @@ var PhueMenu = GObject.registerClass({
         this._compactBridgesMenu[bridgeid]["lights"]["box"] = itemBox;
         this._compactBridgesMenu[bridgeid]["lights"]["switch"] = null;
         this._compactBridgesMenu[bridgeid]["lights"]["slider"] = null;
-
-        this._setCompactMenuZeroLights(bridgeid, data);
 
         return lightsSubMenu;
     }
@@ -2760,8 +2630,6 @@ var PhueMenu = GObject.registerClass({
         this._compactBridgesMenu[bridgeid]["control"]["switch"] = null;
         this._compactBridgesMenu[bridgeid]["control"]["slider"] = null;
 
-        this._setCompactMenuZeroControl(bridgeid);
-
         return controlSubMenu;
     }
 
@@ -2797,7 +2665,7 @@ var PhueMenu = GObject.registerClass({
             /* disable closing menu on item activated */
             groupItem.menu.itemActivated = (animate) => {};
 
-            groupIcon = this._tryGetGroupIcon(data["groups"][groupid]);
+            groupIcon = this._tryGetGroupIcon(bridgeid, groupid);
             if (groupIcon !== null) {
                 groupItem.insert_child_at_index(groupIcon, 1);
             }
@@ -3087,6 +2955,17 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
+     * Select default group in compact menu.
+     * 
+     * @method _selectCompactMenuDefaultGroup
+     * @param {String} bridgeid 
+     */
+    _selectCompactMenuDefaultGroup(bridgeid) {
+        /* select all lights by default */
+        this._selectCompactMenuGroup(bridgeid, "0");
+    }
+
+    /**
      * Creates array of submenus of compact menu for bridge.
      * 
      * @method _createCompactMenuBridge
@@ -3127,6 +3006,8 @@ var PhueMenu = GObject.registerClass({
         items = items.concat(
             this._createCompactMenuControl(bridgeid, data)
         );
+
+        this._selectCompactMenuDefaultGroup(bridgeid);
 
         return items;
     }
