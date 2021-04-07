@@ -1471,6 +1471,7 @@ var PhueMenu = GObject.registerClass({
 
         return [r, g, b];
     }
+
     /**
      * Colorizes slideres based on light color.
      * 
@@ -1511,6 +1512,16 @@ var PhueMenu = GObject.registerClass({
         }
     }
 
+    /**
+     * Colorizes switches based on light color.
+     * 
+     * @method _createLightSwitch
+     * @param {Object} switchItem to colorize
+     * @param {String} bridgeid
+     * @param {Number} lightid
+     * @param {Number} groupid
+     * @param {Boolean} tmp: true for tmp refresh
+     */
     _createSwitchColor(switchItem, bridgeid, lightid, groupid, tmp) {
 
         let bridgePath = "";
