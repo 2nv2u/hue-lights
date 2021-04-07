@@ -1423,9 +1423,54 @@ var PhueMenu = GObject.registerClass({
             "tmp": true
         }
 
+        this._createSwitchColor(switchBox, bridgeid, lightid, groupid, true);
+
         return switchButton;
     }
 
+    /**
+     * Gets color for a group or a single light
+     * 
+     * @method _getLightOrGroupColor
+     * @param {String} bridgeid
+     * @param {Object} array with parsedBridgePath
+     * @param {Number} value coresponding to parsedBridgePath
+     * @return {Object} RGB
+     */
+    _getLightOrGroupColor(bridgeid, parsedBridgePath, value) {
+        let r = 0;
+        let g = 0;
+        let b = 0;
+
+        if (parsedBridgePath[1] === "lights") {
+            switch (value["colormode"]) {
+
+                case "xy":
+                    [r, g, b] = Utils.xyBriToColor(
+                        value["xy"][0],
+                        value["xy"][1],
+                        255 /* or value["bri"] */
+                    );
+
+                    break;
+
+                case "ct":
+                    let kelvin = Utils.ctToKelvin(value["ct"]);
+                    [r, g, b] = Utils.kelvinToRGB(kelvin);
+                    break;
+
+                default:
+                    return;
+            }
+
+        }
+
+        if (parsedBridgePath[1] === "groups") {
+            [r, g, b] = this._getGroupColor(bridgeid, parsedBridgePath[2]);
+        }
+
+        return [r, g, b];
+    }
     /**
      * Colorizes slideres based on light color.
      * 
@@ -1462,6 +1507,36 @@ var PhueMenu = GObject.registerClass({
             "bridgeid": bridgeid,
             "object": slider,
             "type": "slider-color",
+            "tmp": tmp
+        }
+    }
+
+    _createSwitchColor(switchItem, bridgeid, lightid, groupid, tmp) {
+
+        let bridgePath = "";
+
+        if (groupid === null &&
+            this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"] === undefined &&
+            this.bridesData[bridgeid]["lights"][lightid]["state"]["ct"] === undefined) {
+            return;
+        }
+
+        if (groupid !== null &&
+            this.bridesData[bridgeid]["groups"][groupid]["action"]["xy"] === undefined &&
+            this.bridesData[bridgeid]["groups"][groupid]["action"]["ct"] === undefined) {
+            return;
+        }
+
+        if (groupid !== null) {
+            bridgePath = `${this._rndID()}::groups::${groupid}::action`;
+        } else {
+            bridgePath = `${this._rndID()}::lights::${lightid}::state`;
+        }
+
+        this.refreshMenuObjects[bridgePath] = {
+            "bridgeid": bridgeid,
+            "object": switchItem,
+            "type": "switch-color",
             "tmp": tmp
         }
     }
@@ -1828,6 +1903,8 @@ var PhueMenu = GObject.registerClass({
             "type": "switch",
             "tmp": tmp
         }
+
+        this._createSwitchColor(switchBox, bridgeid, null, groupid, tmp);
 
         return switchButton;
     }
@@ -3350,6 +3427,9 @@ var PhueMenu = GObject.registerClass({
         let object = null;
         let parsedBridgePath = [];
         let value;
+        let r = 0;
+        let g = 0;
+        let b = 0;
 
         Utils.logDebug("Refreshing menu.");
 
@@ -3458,36 +3538,7 @@ var PhueMenu = GObject.registerClass({
                         break;
                     }
 
-                    let r = 0;
-                    let g = 0;
-                    let b = 0;
-
-                    if (parsedBridgePath[1] === "lights") {
-                        switch (value["colormode"]) {
-
-                            case "xy":
-                                [r, g, b] = Utils.xyBriToColor(
-                                    value["xy"][0],
-                                    value["xy"][1],
-                                    255 /* or value["bri"] */
-                                );
-                                break;
-
-                            case "ct":
-                                let kelvin = Utils.ctToKelvin(value["ct"]);
-                                [r, g, b] = Utils.kelvinToRGB(kelvin);
-                                break;
-
-                            default:
-                                return;
-                        }
-
-
-                    }
-
-                    if (parsedBridgePath[1] === "groups") {
-                        [r, g, b] = this._getGroupColor(bridgeid, parsedBridgePath[2]);
-                    }
+                    [r, g, b] = this._getLightOrGroupColor(bridgeid, parsedBridgePath, value);
 
                     r = ('0' + r.toString(16)).slice(-2);
                     g = ('0' + g.toString(16)).slice(-2);
@@ -3496,6 +3547,46 @@ var PhueMenu = GObject.registerClass({
                     let styleColor = `#${r}${g}${b}`;
 
                     object.style = `-barlevel-active-background-color: ${styleColor}; -barlevel-active-border-color: ${styleColor}`;
+
+                    break;
+
+                case "switch-color":
+                    parsedBridgePath[2] = parseInt(parsedBridgePath[2]);
+
+                    if (!object.state) {
+                        object.clear_effects();
+                        break;
+                    }
+
+                    value = this.bridesData[bridgeid];
+                    for (let i in parsedBridgePath) {
+                        if (i == 0) {
+                            continue;
+                        }
+
+                        value = value[parsedBridgePath[i]];
+                    }
+
+                    if (parsedBridgePath[1] === "lights" &&  !value["on"] ||
+                        (parsedBridgePath[1] === "groups" && this._getGroupBrightness(bridgeid, parsedBridgePath[2]) === 0)) {
+
+                        object.clear_effects();
+
+                        break;
+                    }
+
+                    [r, g, b] = this._getLightOrGroupColor(bridgeid, parsedBridgePath, value);
+
+                    let color = new Clutter.Color({
+                        red: r,
+                        green: g,
+                        blue: b,
+                        alpha: 255
+                    });
+
+                    let colorEffect = new Clutter.ColorizeEffect({tint: color});
+                    object.clear_effects();
+                    object.add_effect(colorEffect);
 
                     break;
 
