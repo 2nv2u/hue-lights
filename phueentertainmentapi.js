@@ -40,7 +40,6 @@ const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 const GObject = imports.gi.GObject;
 const ByteArray = imports.byteArray;
-const Lang = imports.lang;
 const DTLSClient = Me.imports.dtlsclient;
 const PhueScreenshot = Me.imports.phuescreenshot;
 
@@ -78,14 +77,20 @@ var PhueEntertainment =  GObject.registerClass({
     _init(props={}) {
         super._init(props);
 
+        let signal;
+
         this.gradient = false;
         this.intensity = 40;
         this.brightness = 0xFF;
 
+        this._signals = {};
+
         this.dtls = new DTLSClient.DTLSClient({ip: this._ip, port: 2100, pskidentity: this._username, psk: this._clientkey});
-        this.dtls.connect("connected", () => {
+        signal = this.dtls.connect("connected", () => {
             this.emit("connected");
         });
+
+        this._signals[signal] = { "object": this.dtls };
     }
 
     set ip(value) {
@@ -133,6 +138,16 @@ var PhueEntertainment =  GObject.registerClass({
     closeBridge() {
         this.stopStreaming();
         this.dtls.closeBridge();
+
+        for (let id in this._signals) {
+            try {
+                this._signals[id]["object"].disconnect(id);
+                delete(this._signals[id]);
+            } catch {
+                continue;
+            }
+        }
+
         this.emit("disconnected");
     }
 
@@ -150,7 +165,7 @@ var PhueEntertainment =  GObject.registerClass({
      * Sets the brightness of entertainment effects
      * 
      * @method setBrightness
-     * @param {Number} 0-254
+     * @param {Number} 0-255
      */
     setBrightness(brightness) {
         this.brightness = brightness;
@@ -194,9 +209,9 @@ var PhueEntertainment =  GObject.registerClass({
 
                 lightsArray = lightsArray.concat(this.lights[i]);
 
-                let r = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/254));
-                let g = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/254));
-                let b = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/254));
+                let r = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/255));
+                let g = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/255));
+                let b = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/255));
 
                 lightsArray = lightsArray.concat(DTLSClient.uintToArray(r, 8));
                 lightsArray = lightsArray.concat(DTLSClient.uintToArray(r, 8));
@@ -210,9 +225,9 @@ var PhueEntertainment =  GObject.registerClass({
                 for (let i = 0; i < 7; i++) {
                     lightsArray = lightsArray.concat([0x01, 0x00, i]);
 
-                    let r = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/254));
-                    let g = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/254));
-                    let b = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/254));
+                    let r = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/255));
+                    let g = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/255));
+                    let b = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/255));
 
                     lightsArray = lightsArray.concat(DTLSClient.uintToArray(r, 8));
                     lightsArray = lightsArray.concat(DTLSClient.uintToArray(r, 8));
@@ -273,9 +288,9 @@ var PhueEntertainment =  GObject.registerClass({
         let green = this.adjustColorElement(color.green);
         let blue = this.adjustColorElement(color.blue);
 
-        let r = Math.round(red * (this.brightness/254));
-        let g = Math.round(green * (this.brightness/254));
-        let b = Math.round(blue * (this.brightness/254));
+        let r = Math.round(red * (this.brightness/255));
+        let g = Math.round(green * (this.brightness/255));
+        let b = Math.round(blue * (this.brightness/255));
 
         for (let i = 0; i < this.lights.length; i++) {
 
@@ -322,7 +337,7 @@ var PhueEntertainment =  GObject.registerClass({
         }
 
         if (c >= 249) {
-            return 254;
+            return 255;
         }
 
         return c;
@@ -339,7 +354,8 @@ var PhueEntertainment =  GObject.registerClass({
      * @param {Object} coordinates of the light in Entertainment settings
      * @return {Object} rectangle of the light in actual screen
      */
-    getRectangleOfLight(screenWidth, screenHeight, location) {
+    getRectangleOfLight(startX, startY, screenWidth, screenHeight, location) {
+
         /* 2 because the demo room in app has TV of half the size of the room */
         let tmpWidth = 2 * location[0] * (screenWidth/2) + screenWidth/2;
         if (tmpWidth < 0) {
@@ -357,7 +373,11 @@ var PhueEntertainment =  GObject.registerClass({
         let minHeight = Math.round(Math.max(0, tmpHeight - screenHeight * LightRectangle.HEIGHT / 2));
         let maxHeight = Math.round(Math.min(screenHeight, tmpHeight + screenHeight * LightRectangle.HEIGHT / 2));
 
-        return [[minWidth, maxWidth],[],[minHeight, maxHeight]]
+        return [
+            [startX + minWidth, startX + maxWidth],
+            [],
+            [startY + minHeight, startY + maxHeight]
+        ]
     }
 
     /**
@@ -365,7 +385,8 @@ var PhueEntertainment =  GObject.registerClass({
      * 
      * @method doSyncSreen
      */
-    async doSyncSreen() {
+    async doSyncSreen(screenRectangle) {
+
         if (!this._doStreaming) {
             return;
         }
@@ -374,8 +395,9 @@ var PhueEntertainment =  GObject.registerClass({
             return;
         }
 
-        if (this.screenWidth !== global.screen_width ||
-            this.screenHeight !== global.screen_height) {
+        if (screenRectangle === undefined &&
+            (this.screenWidth !== global.screen_width ||
+            this.screenHeight !== global.screen_height)) {
             /* screen has been changed */
             this.closeBridge();
             return;
@@ -416,9 +438,9 @@ var PhueEntertainment =  GObject.registerClass({
             green = this.adjustColorElement(green);
             blue = this.adjustColorElement(blue);
 
-            r = Math.round(red * (this.brightness/254));
-            g = Math.round(green * (this.brightness/254));
-            b = Math.round(blue * (this.brightness/254));
+            r = Math.round(red * (this.brightness/255));
+            g = Math.round(green * (this.brightness/255));
+            b = Math.round(blue * (this.brightness/255));
 
             lightsArray = lightsArray.concat(this.lights[i]);
 
@@ -454,9 +476,9 @@ var PhueEntertainment =  GObject.registerClass({
                 green = this.adjustColorElement(green);
                 blue = this.adjustColorElement(blue);
 
-                r = Math.round(red * (this.brightness/254));
-                g = Math.round(green * (this.brightness/254));
-                b = Math.round(blue * (this.brightness/254));
+                r = Math.round(red * (this.brightness/255));
+                g = Math.round(green * (this.brightness/255));
+                b = Math.round(blue * (this.brightness/255));
 
                 lightsArray = lightsArray.concat([0x01, 0x00, i]);
 
@@ -472,7 +494,7 @@ var PhueEntertainment =  GObject.registerClass({
         this.dtls.sendEncrypted(lightsArray);
 
         GLib.timeout_add(GLib.PRIORITY_DEFAULT, this.intensity, () => {
-            this.doSyncSreen();
+            this.doSyncSreen(screenRectangle);
         });
     }
 
@@ -549,10 +571,9 @@ var PhueEntertainment =  GObject.registerClass({
         this._doStreaming = false; /* start function will reactivate this */
         this._changeToMe["done"] = true;
 
-        this._changeToMe["func"].bind(this)(
-            this._changeToMe["prams"][0],
-            this._changeToMe["prams"][1],
-            this._changeToMe["prams"][2]
+        this._changeToMe["func"].bind(this).apply(
+            this,
+            this._changeToMe["prams"]
         );
 
 
@@ -631,18 +652,18 @@ var PhueEntertainment =  GObject.registerClass({
      * @param {Array} relative locations of lights
      * @param {Boolean} Is the gradient light strip in the group?
      */
-    startSyncScreen(lights, lightsLocations, gradient) {
+    startSyncScreen(screenRectangle, lights, lightsLocations, gradient) {
         if (this._doStreaming) {
             this._changeToMe = {
                 "done": false,
                 "func": this.startSyncScreen,
-                "prams": [lights, lightsLocations, gradient]
+                "prams": [screenRectangle, lights, lightsLocations, gradient]
             }
 
             return;
         }
 
-        if (!this.checkSyncSuitableResolution()) {
+        if (screenRectangle === undefined && !this.checkSyncSuitableResolution()) {
             Main.notify(
                 _("Hue Lights - Sync screen"),
                 _("Your screen is not a solid rectangle.")
@@ -663,28 +684,89 @@ var PhueEntertainment =  GObject.registerClass({
 
         this.screenshot = new PhueScreenshot.PhueScreenshot();
 
+        let startX = 0;
+        let startY = 0;
         this.screenWidth = global.screen_width;
         this.screenHeight = global.screen_height;
 
+        if (screenRectangle !== undefined) {
+            startX = screenRectangle[0];
+            startY = screenRectangle[1];
+            this.screenWidth = screenRectangle[2];
+            this.screenHeight = screenRectangle[3];
+        }
+
         this.lightsRectangles = [];
         for (let i = 0; i < this.lights.length; i++) {
-            this.lightsRectangles.push(this.getRectangleOfLight(this.screenWidth, this.screenHeight, this.lightsLocations[i]));
+            this.lightsRectangles.push(this.getRectangleOfLight(
+                startX,
+                startY,
+                this.screenWidth,
+                this.screenHeight,
+                this.lightsLocations[i]
+            ));
         }
 
         this.gradientRectangles = [];
         if (this.gradient) {
-            this.gradientRectangles.push(this.getRectangleOfLight(this.screenWidth, this.screenHeight, [-0.5, 0.75, -1]));
-            this.gradientRectangles.push(this.getRectangleOfLight(this.screenWidth, this.screenHeight, [-0.5, 0.75, 0]));
+            this.gradientRectangles.push(this.getRectangleOfLight(
+                startX,
+                startY,
+                this.screenWidth,
+                this.screenHeight,
+                [-0.5, 0.75, -1]
+            ));
 
-            this.gradientRectangles.push(this.getRectangleOfLight(this.screenWidth, this.screenHeight, [-0.35, 0.75, 1]));
-            this.gradientRectangles.push(this.getRectangleOfLight(this.screenWidth, this.screenHeight, [0, 0.75, 1]));
-            this.gradientRectangles.push(this.getRectangleOfLight(this.screenWidth, this.screenHeight, [0.35, 0.75, 1]));
+            this.gradientRectangles.push(this.getRectangleOfLight(
+                startX,
+                startY,
+                this.screenWidth,
+                this.screenHeight,
+                [-0.5, 0.75, 0]
+            ));
 
-            this.gradientRectangles.push(this.getRectangleOfLight(this.screenWidth, this.screenHeight, [0.5, 0.75, 0]));
-            this.gradientRectangles.push(this.getRectangleOfLight(this.screenWidth, this.screenHeight, [0.5, 0.75, -1]));
+            this.gradientRectangles.push(this.getRectangleOfLight(
+                startX,
+                startY,
+                this.screenWidth,
+                this.screenHeight,
+                [-0.35, 0.75, 1]
+            ));
+
+            this.gradientRectangles.push(this.getRectangleOfLight(
+                startX,
+                startY,
+                this.screenWidth,
+                this.screenHeight,
+                [0, 0.75, 1]
+            ));
+
+            this.gradientRectangles.push(this.getRectangleOfLight(
+                startX,
+                startY,
+                this.screenWidth,
+                this.screenHeight,
+                [0.35, 0.75, 1]
+            ));
+
+            this.gradientRectangles.push(this.getRectangleOfLight(
+                startX,
+                startY,
+                this.screenWidth,
+                this.screenHeight,
+                [0.5, 0.75, 0]
+            ));
+
+            this.gradientRectangles.push(this.getRectangleOfLight(
+                startX,
+                startY,
+                this.screenWidth,
+                this.screenHeight,
+                [0.5, 0.75, -1]
+            ));
         }
 
-        this.doSyncSreen();
+        this.doSyncSreen(screenRectangle);
     }
 
     /**
