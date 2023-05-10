@@ -5,14 +5,14 @@
  * JavaScript Gnome extension for Philips Hue lights and bridges.
  *
  * @author Václav Chlumský
- * @copyright Copyright 2021, Václav Chlumský.
+ * @copyright Copyright 2022, Václav Chlumský.
  */
 
 /**
  * @license
  * The MIT License (MIT)
  *
- * Copyright (c) 2021 Václav Chlumský
+ * Copyright (c) 2022 Václav Chlumský
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -38,18 +38,16 @@ const GLib = imports.gi.GLib;
 const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
 const Config = imports.misc.config;
-
-const Gettext = imports.gettext;
-const _ = Gettext.gettext;
+const NM = imports.gi.NM;
 
 var HUELIGHTS_SETTINGS_SCHEMA = "org.gnome.shell.extensions.hue-lights";
+var HUELIGHTS_SETTINGS_FORCE_ENGLISH = "force-english";
 var HUELIGHTS_SETTINGS_BRIDGES = "bridges";
 var HUELIGHTS_SETTINGS_BRIDGES_TYPE = "a{sa{ss}}";
 var HUELIGHTS_SETTINGS_INDICATOR = "indicator-position";
 var HUELIGHTS_SETTINGS_ZONESFIRST = "zones-first";
 var HUELIGHTS_SETTINGS_SHOWSCENES = "show-scenes";
 var HUELIGHTS_SETTINGS_COMPACTMENU = "compact-menu";
-var HUELIGHTS_SETTINGS_COMPACTMENU_REMEMBER_OPENED = "compact-menu-remember-opened";
 var HUELIGHTS_SETTINGS_CONNECTION_TIMEOUT = "connection-timeout";
 var HUELIGHTS_SETTINGS_DEBUG = "debug";
 var HUELIGHTS_SETTINGS_NOTIFY_LIGHTS = "notify-lights";
@@ -59,6 +57,25 @@ var HUELIGHTS_SETTINGS_ENTERTAINMENT = "entertainment";
 var HUELIGHTS_SETTINGS_ENTERTAINMENT_TYPE = "a{sa{si}}";
 var HUELIGHTS_SETTINGS_SYNC_SELECTION_KEY_SHORTCUT = "sync-selection";
 var HUELIGHTS_SETTINGS_SYNC_SELECTION_KEY_SHORTCUT_TYPE = "as";
+var HUELIGHTS_SETTINGS_MENU_SELECTED = "menu-selected";
+var HUELIGHTS_SETTINGS_MENU_SELECTED_TYPE = "a{sa{si}}";
+var HUELIGHTS_SETTINGS_SYNCBOXES = "syncboxes";
+var HUELIGHTS_SETTINGS_SYNCBOXES_TYPE = "a{sa{ss}}";
+var HUELIGHTS_SETTINGS_CONNECTION_TIMEOUT_SB = "connection-timeout-sb";
+var HUELIGHTS_SETTINGS_ASSOCIATED_CONNECTION = "associated-connection";
+var HUELIGHTS_SETTINGS_ASSOCIATED_CONNECTION_TYPE = "a{sa{sas}}";
+
+var NOTIFY_LIGHTS_LABEL = 10001;
+var NOTIFY_LIGHTS_REGEX_TITLE = 10002;
+var NOTIFY_LIGHTS_REGEX_BODY = 10003;
+
+const [major] = Config.PACKAGE_VERSION.split(".");
+var shellVersion = Number.parseInt(major);
+
+const Gettext = imports.gettext.domain('hue-lights');
+const __ = Gettext.gettext;
+
+var allowedConnectionTypes = ['802-11-wireless', '802-3-ethernet'];
 
 /**
  * https://developers.meethue.com/develop/hue-api/supported-devices/
@@ -101,6 +118,10 @@ var getHueIconFile = {
     "LCW001": "archetypesWallShade",
     "LCW002": "archetypesWallShade",
     "LCX001": "heroesLightstrip",
+    "LCX002": "heroesLightstrip",
+    "LCX003": "heroesLightstrip",
+    "LCX004": "heroesLightstrip",
+    "LCX005": "heroesLightstrip",
     "LDD001": "archetypesTableShade",
     "LDD002": "archetypesRecessedFloor",
     "LDF001": "archetypesRecessedCeiling",
@@ -262,14 +283,22 @@ var entertainmentMode = {
 };
 
 var entertainmentModeText = {
-    0: _("Display"),
-    1: _("Screen"),
-    2: _("Selection"),
-    3: _("Track cursor"),
-    4: _("Random")
+    0: "Display",
+    1: "Screen",
+    2: "Selection",
+    3: "Track cursor",
+    4: "Random"
 };
 
 var debug = false;
+
+function checkGettextEnglish(gettext) {
+    let forceEnglish = ExtensionUtils.getSettings(
+        HUELIGHTS_SETTINGS_SCHEMA
+    ).get_boolean(HUELIGHTS_SETTINGS_FORCE_ENGLISH);
+
+    return forceEnglish ? (a) => { return a; } : gettext;
+}
 
 /**
  * Check gnome version
@@ -277,8 +306,8 @@ var debug = false;
  * @method isGnome40
  * @return {Boolean} true if Gnome 40
  */
- function isGnome40() {
-    if (parseInt(Config.PACKAGE_VERSION) >= 40) {
+function isGnome40() {
+    if (shellVersion >= 40) {
         return true;
     }
 
@@ -293,8 +322,48 @@ var debug = false;
  */
 function logDebug(msg) {
     if (debug) {
-        log(`Hue Lights (debug): ${msg}`)
+        log(`Hue Lights [debug]: ${msg}`)
     }
+}
+
+function removeFromArray(arr, remove) {
+    return arr.filter(
+        (value) => { return value != remove; }
+    );
+ }
+
+/**
+ * Logs error message
+ *
+ * @method logError
+ * @param {String} meassage to print
+ */
+ function logError(msg) {
+    log(`Hue Lights [error]: ${msg}`)
+}
+
+/**
+ * Gets all known connections
+ * 
+ * @method getConnections
+ * @returns {Object} array of conections
+ */
+ function getConnections() {
+
+    let c = [];
+
+    let client = NM.Client.new(null);
+
+    let connections = client.get_connections();
+    for (let connection of connections) {
+        if (! allowedConnectionTypes.includes(connection.get_connection_type())) {
+            continue;
+        }
+
+        c.push(connection.get_id());
+    }
+
+    return c;
 }
 
 /**
@@ -632,4 +701,43 @@ function XYBriToColor(x, y, bri) {
     b = Math.round(b);
 
     return [r, g, b];
+}
+
+/**
+ * Convert string to array of bytes.
+ *
+ * @param {String} s string to convert
+ * @return {Object} array of bytes
+ */
+function string2Hex(s) {
+    let ret = [];
+
+    for (let i = 0; i < s.length; i++) {
+        ret.push(s.charCodeAt(i));
+    }
+
+    return ret;
+}
+
+/**
+ * Hash function string to number.
+ * https://linuxhint.com/javascript-hash-function/
+ *
+ * @param {String} string to hash
+ * @return {Integer} number
+ */
+function hashMe(string) {
+    let hash = 0;
+
+    if (string.length == 0) {
+        return hash;
+    }
+
+    for (let x = 0; x <string.length; x++) {
+        let ch = string.charCodeAt(x);
+        hash = ((hash <<5) - hash) + ch;
+        hash = hash & hash;
+    }
+
+    return hash;
 }

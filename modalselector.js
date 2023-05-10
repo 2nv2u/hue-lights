@@ -4,14 +4,14 @@
  * JavaScript class for showing options in modal dialog.
  *
  * @author Václav Chlumský
- * @copyright Copyright 2021, Václav Chlumský.
+ * @copyright Copyright 2022, Václav Chlumský.
  */
 
  /**
  * @license
  * The MIT License (MIT)
  *
- * Copyright (c) 2021 Václav Chlumský
+ * Copyright (c) 2022 Václav Chlumský
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -38,6 +38,12 @@ const Main = imports.ui.main;
 const Params = imports.misc.params;
 const Clutter = imports.gi.Clutter;
 const St = imports.gi.St;
+const ExtensionUtils = imports.misc.extensionUtils;
+const Me = ExtensionUtils.getCurrentExtension();
+const Utils = Me.imports.utils;
+
+const Gettext = imports.gettext.domain('hue-lights');
+const __ = Gettext.gettext;
 
 /**
  * ModalSelector class. Modal dialog for selecting an option.
@@ -67,6 +73,8 @@ const St = imports.gi.St;
 
         super._init();
 
+        this._ = Utils.checkGettextEnglish(__);
+
         let label;
         let button;
         let signal;
@@ -78,7 +86,7 @@ const St = imports.gi.St;
             : this.dialogLayout;
 
         this.setButtons([{
-            label: _("Cancel"),
+            label: this._("Cancel"),
             action: () => {
                 this.emit("canceled");
                 this.disconnectSignals();

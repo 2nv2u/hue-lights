@@ -4,14 +4,14 @@
  * JavaScript class for showing window with colors and picking the color
  *
  * @author Václav Chlumský
- * @copyright Copyright 2021, Václav Chlumský.
+ * @copyright Copyright 2022, Václav Chlumský.
  */
 
  /**
  * @license
  * The MIT License (MIT)
  *
- * Copyright (c) 2021 Václav Chlumský
+ * Copyright (c) 2022 Václav Chlumský
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -47,8 +47,8 @@ const Utils = Me.imports.utils;
 const Params = imports.misc.params;
 const PhueScreenshot = Me.imports.phuescreenshot;
 
-const Gettext = imports.gettext;
-const _ = Gettext.gettext;
+const Gettext = imports.gettext.domain('hue-lights');
+const __ = Gettext.gettext;
 
 /**
  * ColorSelectorButton button.
@@ -337,6 +337,8 @@ var ColorPicker =  GObject.registerClass({
 
         super._init();
 
+        this._ = Utils.checkGettextEnglish(__);
+
         this._signals = {};
         let signal;
 
@@ -350,7 +352,7 @@ var ColorPicker =  GObject.registerClass({
         this.b = 0;
 
         this.setButtons([{
-            label: _("Finish"),
+            label: this._("Finish"),
             action: () => {
                 this._colorPickedFinish();
             },

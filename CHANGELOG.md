@@ -1,3 +1,52 @@
+## Version 30
+ * fix black sliders when using color temperature
+## Version 29
+ * increase version
+## Version 28
+ * Gnome 44 support
+## Version 27
+ * fix e.g.o. standards
+ * reduce space around panel icons
+## Version 26
+ * address e.g.o comment
+ * prefs: using asynchronous mode by default, not by explicit setting
+## Version 25
+ * new preferences UI
+ * dropping support for Gnome version < 40
+ * possibility to use diferent notification lights based on regex
+ * Hue Play Gradient Strip for PC support
+## Version 24
+ * Fix associated connections
+## Version 23
+ * Gnome 43 and libsoup3 support
+## Version 22
+ * fix ES6 standard (Gnome 42 required)
+## Version 21
+ * Gnome 42 support
+ * improved logging
+## Version 20
+ * fix lights synchronization
+## Version 19
+ * add support for scaling display
+ * move scene to the end of menu
+ * change label for scenes and colors
+## Version 18
+ * increase version number
+## Version 17
+ * remove loss/recovery notification
+## Version 16
+ * support for associating devices with networks
+ * libsoup 3 fix
+## Version 15
+ * add Philips Hue Sync Box support
+ * fix gradient light strip support
+ * add german translation
+ * add czech translation
+## Version 14
+ * asynchronously rebuild menu
+ * save selected group and light
+ * improved default menu opening
+ * disallow fully closed state of the menu
 ## Version 13
  * new UI for entertainment areas and modes
  * sync particular display

@@ -5,14 +5,14 @@
  * JavaScript Gnome extension for Philips Hue bridges - Menu creator.
  *
  * @author Václav Chlumský
- * @copyright Copyright 2021, Václav Chlumský.
+ * @copyright Copyright 2022, Václav Chlumský.
  */
 
  /**
  * @license
  * The MIT License (MIT)
  *
- * Copyright (c) 2021 Václav Chlumský
+ * Copyright (c) 2022 Václav Chlumský
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -37,6 +37,7 @@ const Clutter = imports.gi.Clutter;
 const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
 const Hue = Me.imports.phue;
+const PhuePanelMenu = Me.imports.phuepanelmenu;
 const HueEntertainment = Me.imports.phueentertainmentapi;
 const PhueRequestype = Me.imports.phueapi.PhueRequestype;
 const Utils = Me.imports.utils;
@@ -56,22 +57,11 @@ const GLib = imports.gi.GLib;
 const Meta = imports.gi.Meta;
 const Shell = imports.gi.Shell;
 
-const Gettext = imports.gettext;
-const _ = Gettext.gettext;
-
-const PhueMenuPosition = {
-    CENTER: 0,
-    RIGHT: 1,
-    LEFT: 2
-};
-
-const IconSize = 20;
-
-const PhueIconPack = {
-    NONE: 0,
-    BRIGHT: 1,
-    DARK: 2
-};
+/**
+ * GNOME <= 42 uses AggregateMenu
+ * GNOME >= 43 uses QuickSettings
+ */
+let SystemNetwork = Utils.shellVersion < 43 ? Main.panel.statusArea.aggregateMenu._network : Main.panel.statusArea.quickSettings._network;
 
 const StreamState = {
     STOPPED: 0,
@@ -91,7 +81,7 @@ const StreamState = {
  */
 var PhueMenu = GObject.registerClass({
      GTypeName: 'PhueMenu'
-}, class PhueMenu extends PanelMenu.Button {
+}, class PhueMenu extends PhuePanelMenu.PhuePanelMenu {
 
     /**
      * PhueMenu class initialization
@@ -101,54 +91,34 @@ var PhueMenu = GObject.registerClass({
      */
     _init() {
 
-        super._init(0.0, Me.metadata.name, false);
+        super._init({iconFile: Me.dir.get_path() + '/media/HueIcons/devicesBridgesV2.svg'});
 
         let signal;
-
-        this._signals = {};
-
-        this.refreshMenuObjects = {};
         this.oldNotifylight = {};
         this.bridgeInProblem = {}
         this._bridgesInMenu = [];
+        this._bridgesInMenuShowed = [];
+        this._defaultBridgeInMenu = "";
         this._openMenuDefault = null;
         this._isStreaming = {};
         this._waitingNotification = {};
         this._notificationQueues = {};
-        this._rebuildingMenu = false;
         this._rebuildingMenuFirstTime = true;
         this.bridesData = {};
+        this.colorPicker = {};
+        this._networkClient = undefined;
 
         this._settings = ExtensionUtils.getSettings(Utils.HUELIGHTS_SETTINGS_SCHEMA);
         signal = this._settings.connect("changed", () => {
             if (this.readSettings()) {
                 this.rebuildMenuStart();
             }
-            this.setPositionInPanel();
-            this.hue.setConnectionTimeout(this._connectionTimeout);
         });
         this._appendSignal(signal, this._settings, false);
 
         this.hue = new Hue.Phue(true);
 
         this.readSettings();
-        this.hue.setConnectionTimeout(this._connectionTimeout);
-        this._indicatorPositionBackUp = -1;
-        this.setPositionInPanel();
-
-        this.colorPicker = {};
-
-        let icon = new St.Icon({
-            gicon : Gio.icon_new_for_string(Me.dir.get_path() + '/media/HueIcons/devicesBridgesV2.svg'),
-            style_class : 'system-status-icon',
-        });
-
-        let iconEffect = this._getIconBriConEffect(PhueIconPack.BRIGHT);
-        icon.add_effect(iconEffect);
-
-        this.add_child(icon);
-
-        this.rebuildMenuStart(true);
 
         signal = this.menu.connect("open-state-changed", () => {
             if (this.menu.isOpen) {
@@ -170,124 +140,42 @@ var PhueMenu = GObject.registerClass({
             this._startingUpSignal = Main.layoutManager.connect(
                 "startup-complete",
                 () => {
-                    this._setScreenChangeDetection();
+                    Main.layoutManager.disconnect(this._startingUpSignal);
+                    this._startingUpSignal = undefined;
+
+                    this._networkClient = SystemNetwork._client;
+                    this._networkClient.connect('notify::active-connections', () => {
+                        this.rebuildMenuStart();
+                    });
+
+                    this.rebuildMenuStart();
+                    this._setScreenChangeDetection(
+                        this.rebuildMenuStart.bind(this)
+                    );
                 }
             );
         } else {
-            this._setScreenChangeDetection();
-        }
-    }
-
-    /**
-     * Connects signals with change of displays
-     * to rebuild menu and detect new displays.
-     * 
-     * @method _setScreenChangeDetection
-     * @private
-     */
-    _setScreenChangeDetection() {
-        let signal;
-
-        if (this._startingUpSignal !== undefined) {
-            Main.layoutManager.disconnect(this._startingUpSignal);
-            this._startingUpSignal = undefined;
-        }
-
-        signal = Main.layoutManager.connect(
-            "monitors-changed",
-            () => {
+            this._networkClient = SystemNetwork._client;
+            this._networkClient.connect('notify::active-connections', () => {
                 this.rebuildMenuStart();
-            }
-        );
-        this._appendSignal(signal, Main.layoutManager, false);
-    }
+            });
 
-    /**
-     * Returns effect that can be applied on icon
-     * 
-     * @method _getIconColorEffect
-     * @private
-     * @param {Enum} requested icon effect
-     * @return {Object} effect
-     */
-    _getIconColorEffect(reqEffect) {
-
-        let color;
-        switch (reqEffect) {
-
-            case PhueIconPack.BRIGHT:
-
-                color = new Clutter.Color({
-                    red: 237,
-                    green: 237,
-                    blue: 237,
-                    alpha: 255
-                });
-                break;
-
-            case PhueIconPack.DARK:
-
-                color = new Clutter.Color({
-                    red: 40,
-                    green: 40,
-                    blue: 40,
-                    alpha: 255
-                });
-                break;
-
-            default:
+            this.rebuildMenuStart();
+            this._setScreenChangeDetection(
+                this.rebuildMenuStart.bind(this)
+            );
         }
-
-        let effect = new Clutter.ColorizeEffect({tint: color});
-        return effect;
-    }
-
-    /**
-     * Returns effect that can be applied on icon
-     * 
-     * @method _getIconBriConEffect
-     * @private
-     * @param {Enum} requested icon effect
-     * @return {Object} effect
-     */
-    _getIconBriConEffect(reqEffect) {
-
-        let bri = 0.0;
-        let cont = 0.0;
-
-        let effect = new Clutter.BrightnessContrastEffect();
-        switch (reqEffect) {
-
-            case PhueIconPack.BRIGHT:
-
-                bri = 0.8;
-                cont = 0.2;
-                break;
-
-            case PhueIconPack.DARK:
-
-                bri = 0.2;
-                cont = 0.2;
-                break;
-
-            default:
-        }
-
-        effect.set_brightness(bri);
-        effect.set_contrast(cont);
-        return effect;
     }
 
     /**
      * Reads settings into class variables.
      * 
      * @method readSettings
-     * @return {Boolean} True if the menu needs rebuild.
      */
     readSettings() {
 
-        let menuNeedsRebuild = false;
         let tmpVal;
+        let menuNeedsRebuild = super.readSettings();
 
         /**
          * this.hue.bridges needs rebuild
@@ -303,114 +191,29 @@ var PhueMenu = GObject.registerClass({
             menuNeedsRebuild = true;
         }
 
-        /**
-         * this._zonesFirst needs rebuild
-         */
-        tmpVal = this._zonesFirst;
+        let tmpVisible = this.visible;
+        this.setPositionInPanel();
+        this.visible = tmpVisible;
 
-        this._zonesFirst = this._settings.get_boolean(
-            Utils.HUELIGHTS_SETTINGS_ZONESFIRST
-        );
-
-        if (tmpVal !== this._zonesFirst) {
-            menuNeedsRebuild = true;
-        }
-
-        /**
-         * this._showScenes needs rebuild
-         */
-        tmpVal = this._showScenes;
-
-        this._showScenes = this._settings.get_boolean(
-            Utils.HUELIGHTS_SETTINGS_SHOWSCENES
-        );
-
-        if (tmpVal !== this._showScenes) {
-            menuNeedsRebuild = true;
-        }
-
-        /**
-         * this._compactMenu needs rebuild
-         */
-        tmpVal = this._compactMenu;
-
-        this._compactMenu = this._settings.get_boolean(
-            Utils.HUELIGHTS_SETTINGS_COMPACTMENU
-        );
-
-        if (tmpVal !== this._compactMenu) {
-            menuNeedsRebuild = true;
-        }
-
-        /**
-         * this._compactMenuRemember doesn't need rebuild
-         */
-        this._compactMenuRemember = this._settings.get_boolean(
-            Utils.HUELIGHTS_SETTINGS_COMPACTMENU_REMEMBER_OPENED
-        );
-
-        /**
-         * debug doesn't need rebuild
-         */
-        Utils.debug = this._settings.get_boolean(
-            Utils.HUELIGHTS_SETTINGS_DEBUG
-        );
-
-        /**
-         * this._iconPack needs rebuild
-         */
-        tmpVal = this._iconPack;
-
-        this._iconPack = this._settings.get_enum(
-            Utils.HUELIGHTS_SETTINGS_ICONPACK
-        );
-
-        if (tmpVal !== this._iconPack) {
-            menuNeedsRebuild = true;
-        }
-
-        /**
-         * this._indicatorPosition doesn't need rebuild
-         */
-        this._indicatorPosition = this._settings.get_enum(
-            Utils.HUELIGHTS_SETTINGS_INDICATOR
-        );
-
-        /**
-         * this._connectionTimeout doesn't need rebuild
-         */
-        this._connectionTimeout = this._settings.get_int(
-            Utils.HUELIGHTS_SETTINGS_CONNECTION_TIMEOUT
-        );
-
-        /**
-         * this._notifyLights doesn't need rebuild
-         */
-        this._notifyLights = this._settings.get_value(
-            Utils.HUELIGHTS_SETTINGS_NOTIFY_LIGHTS
-        ).deep_unpack();
-
-        /**
-         * this._entertainment doesn't need rebuild
-         */
-        this._entertainment = this._settings.get_value(
-            Utils.HUELIGHTS_SETTINGS_ENTERTAINMENT
-        ).deep_unpack();
-
-        /**
-         * this._syncSelectionKeyShortcut needs rebuild
-         */
-        tmpVal = this._syncSelectionKeyShortcut;
-
-        this._syncSelectionKeyShortcut = this._settings.get_value(
-            Utils.HUELIGHTS_SETTINGS_SYNC_SELECTION_KEY_SHORTCUT
-        ).deep_unpack();
-
-        if (tmpVal !== this._syncSelectionKeyShortcut) {
-            menuNeedsRebuild = true;
-        }
+        this.hue.setConnectionTimeout(this._connectionTimeout);
 
         return menuNeedsRebuild;
+    }
+
+    /**
+     * Wite setting for current selection in menu
+     *
+     * @method writeMenuSelectedSettings
+     */
+    writeMenuSelectedSettings() {
+
+        this._settings.set_value(
+            Utils.HUELIGHTS_SETTINGS_MENU_SELECTED,
+            new GLib.Variant(
+                Utils.HUELIGHTS_SETTINGS_MENU_SELECTED_TYPE,
+                this._menuSelected
+            )
+        );
     }
 
     /**
@@ -434,33 +237,36 @@ var PhueMenu = GObject.registerClass({
                 continue;
             }
 
-            if (this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"] === undefined &&
-                this.bridesData[bridgeid]["lights"][lightid]["state"]["ct"] === undefined) {
-                continue;
-            }
-
             let tmpR = 0;
             let tmpG = 0;
             let tmpB = 0;
             switch (this.bridesData[bridgeid]["lights"][lightid]["state"]["colormode"]) {
 
                 case "xy":
-                    [tmpR, tmpG, tmpB] = Utils.XYBriToColor(
-                        this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"][0],
-                        this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"][1],
-                        255 /* or value["bri"] */
-                    );
+                    if (this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"] !== undefined) {
+                        [tmpR, tmpG, tmpB] = Utils.XYBriToColor(
+                            this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"][0],
+                            this.bridesData[bridgeid]["lights"][lightid]["state"]["xy"][1],
+                            255 /* or value["bri"] */
+                        );
+                    } else {
+                        continue;
+                    }
                     break;
 
                 case "ct":
-                    let kelvin = Utils.ctToKelvin(
-                        this.bridesData[bridgeid]["lights"][lightid]["state"]["ct"]
-                    );
-                    [tmpR, tmpG, tmpB] = Utils.kelvinToRGB(kelvin);
+                    if (this.bridesData[bridgeid]["lights"][lightid]["state"]["ct"] !== undefined) {
+                        let kelvin = Utils.ctToKelvin(
+                            this.bridesData[bridgeid]["lights"][lightid]["state"]["ct"]
+                        );
+                        [tmpR, tmpG, tmpB] = Utils.kelvinToRGB(kelvin);
+                    } else {
+                        continue;
+                    }
                     break;
 
                 default:
-                    break;
+                    continue;
             }
 
             r += tmpR;
@@ -624,21 +430,6 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
-     * Generate almost useless ID number
-     * 
-     * @method _rndID
-     * @private
-     * @return {Number} randomly generated number
-     */
-    _rndID () {
-
-        /* items in this.refreshMenuObjects may occure more then ones,
-         * this way it is possible - otherwise, the ID is useless
-         */
-        return Math.round((Math.random()*1000000));
-    }
-
-    /**
      * Process entertainment data for
      * "switchEntertainment" event.
      * 
@@ -763,7 +554,13 @@ var PhueMenu = GObject.registerClass({
         let colorTemperature;
         let cmd = {};
 
-        if (this.bridesData[bridgeid].length === 0) {
+        if (Object.keys(this.bridesData[bridgeid]).length === 0) {
+            Utils.logDebug(`Bridge ${bridgeid} has no data.`);
+            return;
+        }
+
+        if (!this.hue.instances[bridgeid].isConnected()) {
+            Utils.logDebug(`Bridge ${bridgeid} not connected.`);
             return;
         }
 
@@ -1061,6 +858,37 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
+     * Process data from event stream
+     * 
+     * @method _handleEventStream
+     * @private
+     * @param {String} bridgeid
+     * @param {Object} data
+     */
+    _handleEventStream(bridgeid, data) {
+        for (let d of data) {
+            Utils.logDebug(`Bridge ${bridgeid} event from event stream: ${JSON.stringify(d)}`);
+
+            if (d["data"] !== undefined) {
+
+                for (let i of d["data"]) {
+                    if (i["type"] === "entertainment_configuration" &&
+                        i["status"] !== undefined &&
+                        i["status"] === "active") {
+
+                            this._isStreaming[bridgeid]["gid"] = i["id"];
+
+                            if (this._isStreaming[bridgeid]["state"] === StreamState.STARTING) {
+                                this._isStreaming[bridgeid]["state"] = StreamState.STARTED;
+                                this._checkHueLightsIsStreaming(bridgeid);
+                            }
+                        }
+                }
+            }
+        }
+    }
+
+    /**
      * Tries to discovery secondary sensor with temperature.
      * 
      * @method _tryaddSensorsTemperature
@@ -1343,10 +1171,10 @@ var PhueMenu = GObject.registerClass({
                 }
 
                 let switchItem = new PopupMenu.PopupMenuItem(
-                    _("Switch to") + ` ${this.bridesData[bridgeid]["config"]["name"]}`
+                    this._("Switch to") + ` ${this.bridesData[bridgeid]["config"]["name"]}`
                 )
 
-                if (this._iconPack !== PhueIconPack.NONE) {
+                if (this._iconPack !== PhuePanelMenu.PhueIconPack.NONE) {
                     let iconPath;
 
                     switch (this.bridesData[bridgeid]["config"]["modelid"]) {
@@ -1412,7 +1240,18 @@ var PhueMenu = GObject.registerClass({
             data["config"]["name"]
         );
 
-        if (this._iconPack !== PhueIconPack.NONE) {
+        this._mainLabel[bridgeid] = item.label;
+
+        if (this._compactMenu) {
+            item.menu.connect(
+                'open-state-changed',
+                (menu, isOpen) => {
+                    this._handleLastOpenedMenu(menu, isOpen);
+                }
+            );
+        }
+
+        if (this._iconPack !== PhuePanelMenu.PhueIconPack.NONE) {
             switch (data["config"]["modelid"]) {
 
                 case "BSB001":
@@ -1489,15 +1328,17 @@ var PhueMenu = GObject.registerClass({
      * @param {Number} groupid
      * @return {Object} Brightness slider
      */
-    _createBrightnessSlider(bridgeid, lightid, groupid, tmpTier = 0) {
+    _createBrightnessSlider(bridgeid, lightid, groupid, defaultValue, tmpTier = 0) {
 
         let bridgePath = "";
+        let themeContext = St.ThemeContext.get_for_stage(global.stage);
 
         let slider = new Slider.Slider(0);
-        slider.set_width(150);
+        slider.set_width(180 * themeContext.scaleFactor);
+        slider.set_height(25);
         slider.set_x_align(Clutter.ActorAlign.START);
         slider.set_x_expand(false);
-        slider.value = 100/255;
+        slider.value = defaultValue;
 
         this._createSliderColor(slider, bridgeid, lightid, groupid, tmpTier);
 
@@ -1540,7 +1381,7 @@ var PhueMenu = GObject.registerClass({
      * @param {Number} groupid
      * @return {Object} switch button
      */
-    _createLightSwitch(bridgeid, lightid, groupid, tier = 1) {
+    _createLightSwitch(bridgeid, lightid, groupid, defaultValue, tier = 1) {
 
         let bridgePath = "";
 
@@ -1551,6 +1392,8 @@ var PhueMenu = GObject.registerClass({
         }
 
         let switchBox = new PopupMenu.Switch(false);
+        switchBox.state = defaultValue;
+
         let switchButton = new St.Button(
             {reactive: true, can_focus: true}
         );
@@ -1599,35 +1442,54 @@ var PhueMenu = GObject.registerClass({
      * @param {Number} value coresponding to parsedBridgePath
      * @return {Object} RGB
      */
-    _getLightOrGroupColor(bridgeid, parsedBridgePath, value) {
+    _getLightOrGroupColor(bridgeid, groupid, lightid) {
         let r = 0;
         let g = 0;
         let b = 0;
 
-        if (parsedBridgePath[1] === "lights") {
-            switch (value["colormode"]) {
+        let data = this.bridesData[bridgeid];
+
+        if (groupid === null) {
+            if (!data["lights"][lightid]["state"]["on"]) {
+                return [r, g, b];
+            }
+
+            if (data["lights"][lightid]["state"]["xy"] == undefined &&
+                data["lights"][lightid]["state"]["ct"] == undefined) {
+
+                return [r, g, b];
+            }
+
+            switch (data["lights"][lightid]["state"]["colormode"]) {
 
                 case "xy":
-                    [r, g, b] = Utils.XYBriToColor(
-                        value["xy"][0],
-                        value["xy"][1],
-                        255 /* or value["bri"] */
-                    );
+                    if (data["lights"][lightid]["state"]["xy"] !== undefined) {
+                        [r, g, b] = Utils.XYBriToColor(
+                            data["lights"][lightid]["state"]["xy"][0],
+                            data["lights"][lightid]["state"]["xy"][1],
+                            255 /* or data["lights"][lightid]["state"]["bri"] */
+                        );
+                    }
 
                     break;
 
                 case "ct":
-                    let kelvin = Utils.ctToKelvin(value["ct"]);
-                    [r, g, b] = Utils.kelvinToRGB(kelvin);
+                    if (data["lights"][lightid]["state"]["ct"] !== undefined) {
+                        let kelvin = Utils.ctToKelvin(
+                            data["lights"][lightid]["state"]["ct"]
+                        );
+                        [r, g, b] = Utils.kelvinToRGB(kelvin);
+                    }
+
                     break;
 
                 default:
-                    return;
+                    return [r, g, b];
             }
         }
 
-        if (parsedBridgePath[1] === "groups") {
-            [r, g, b] = this._getGroupColor(bridgeid, parsedBridgePath[2]);
+        if (groupid !== null) {
+            [r, g, b] = this._getGroupColor(bridgeid, groupid);
         }
 
         return [r, g, b];
@@ -1672,6 +1534,20 @@ var PhueMenu = GObject.registerClass({
             "type": "slider-color",
             "tmpTier": tmpTier
         }
+
+        if (groupid !== null && this._getGroupBrightness(bridgeid, groupid) !== 0) {
+            this._setSliderColor(
+                slider,
+                this._getLightOrGroupColor(bridgeid, groupid, null)
+            );
+        }
+
+        if (groupid === null && this.bridesData[bridgeid]["lights"][lightid]["state"]["on"]) {
+            this._setSliderColor(
+                slider,
+                this._getLightOrGroupColor(bridgeid, null, lightid)
+            );
+        }
     }
 
     /**
@@ -1713,6 +1589,20 @@ var PhueMenu = GObject.registerClass({
             "type": "switch-color",
             "tmpTier": tmpTier
         }
+
+        if (groupid !== null && this._getGroupBrightness(bridgeid, groupid) !== 0) {
+            this._setSwitchColor(
+                switchItem,
+                this._getLightOrGroupColor(bridgeid, groupid, null)
+            );
+        }
+
+        if (groupid === null && this.bridesData[bridgeid]["lights"][lightid]["state"]["on"]) {
+            this._setSwitchColor(
+                switchItem,
+                this._getLightOrGroupColor(bridgeid, null, lightid)
+            );
+        }
     }
 
     /**
@@ -1731,13 +1621,14 @@ var PhueMenu = GObject.registerClass({
         let light;
         let bridgePath = "";
         let lightIcon = null;
+        let defaultValue;
 
         /**
          * Decide if this is item for one light or a group.
          */
         if (groupid !== null) {
             light = new PopupMenu.PopupMenuItem(
-                _("Lights")
+                this._("All Lights")
             );
         } else {
             light = new PopupMenu.PopupMenuItem(
@@ -1758,10 +1649,14 @@ var PhueMenu = GObject.registerClass({
         if (groupid === null) {
             lightIcon = this._tryGetLightIcon(data["lights"][lightid]);
         } else {
-            if (this._iconPack !== PhueIconPack.NONE) {
+            if (this._iconPack !== PhuePanelMenu.PhueIconPack.NONE) {
                     lightIcon = this._getIconByPath(
                     Me.dir.get_path() + `/media/HueIcons/bulbGroup.svg`
                 );
+            }
+
+            if (groupid !== "0") {
+                light.label.text = data["groups"][groupid]["name"];
             }
         }
 
@@ -1802,59 +1697,19 @@ var PhueMenu = GObject.registerClass({
                  * 'button-press-event' signal correctly
                  */
 
+                 if (!this.hue.instances[bridgeid].isConnected()) {
+                    return light.originalActivate(event);
+                 }
+
+                this._menuSelected[bridgeid] = {
+                    "groupid": this._menuSelected[bridgeid]["groupid"] !== undefined ? this._menuSelected[bridgeid]["groupid"] : groupid,
+                    "lightid": lightid}
+                ;
+                this.writeMenuSelectedSettings();
+
                 this._selectCompactMenuLights(bridgeid, groupid, lightid);
 
-                this._compactMenuBridges[bridgeid]["control"]["object"].menu.removeAll();
-
-                let controlItem = new PopupMenu.PopupMenuItem(
-                    _("None")
-                )
-
-                controlItem.remove_child(controlItem.label);
-
-                this._compactMenuBridges[bridgeid]["control"]["object"].visible = true;
-
-                let [hasXY, hasCT] = this._checkColorAttributeLightOrGroup(
-                    bridgeid,
-                    groupid === null ? "lights": "groups",
-                    groupid === null ? lightid: groupid
-                );
-
-                let colorPickerBox = new ColorPicker.ColorPickerBox({
-                    useColorWheel: hasXY,
-                    useWhiteBox: hasCT
-                });
-
-                if (this.colorPicker[bridgeid] !== undefined) {
-                    delete(this.colorPicker[bridgeid]);
-                }
-                this.colorPicker[bridgeid] = colorPickerBox;
-
-                let dataColor = {
-                    "bridgeid": bridgeid,
-                    "bridgePath": bridgePath,
-                    "type": "set-color"
-                }
-
-                colorPickerBox.connect(
-                    "color-picked",
-                        this._menuEventHandler.bind(this, dataColor)
-                );
-
-                let dataBrightness = {
-                    "bridgeid": bridgeid,
-                    "bridgePath": bridgePath,
-                    "type": "brightness-colorpicker"
-                }
-
-                colorPickerBox.connect(
-                    "brightness-picked",
-                    this._menuEventHandler.bind(this, dataBrightness)
-                );
-
-                controlItem.add(colorPickerBox.createColorBox());
-
-                this._compactMenuBridges[bridgeid]["control"]["object"].menu.addMenuItem(controlItem);
+                this._setCompactMenuControl(bridgeid, groupid, lightid);
 
                 /**
                  * ask for async all data,
@@ -1862,13 +1717,13 @@ var PhueMenu = GObject.registerClass({
                  */
                 this.hue.instances[bridgeid].getAll();
 
-                if (this._compactMenuRemember) {
-                    this._openMenuDefault = this._compactMenuBridges[bridgeid]["control"]["object"].menu;
+                if (this._compactMenuBridges[bridgeid]["control"]["object"].visible) {
+                    this._compactMenuBridges[bridgeid]["control"]["object"].menu.open(true);
                 }
 
-                this._compactMenuBridges[bridgeid]["control"]["object"].menu.open(true);
-
-                this._compactMenuBridges[bridgeid]["lights"]["hidden-item"].visible = true;
+                if (this._compactMenuBridges[bridgeid]["lights"]["hidden-item"] !== undefined) {
+                    this._compactMenuBridges[bridgeid]["lights"]["hidden-item"].visible = true;
+                }
 
                 light.visible = false;
                 this._compactMenuBridges[bridgeid]["lights"]["hidden-item"] = light;
@@ -1876,10 +1731,25 @@ var PhueMenu = GObject.registerClass({
                 return light.originalActivate(event);
             }
 
-            if (groupid !== null) {
+            let hiddenLight = false;
+
+            if ((this._menuSelected[bridgeid] !== undefined &&
+                this._menuSelected[bridgeid]["lightid"] !== undefined &&
+                this._menuSelected[bridgeid]["lightid"] === lightid) ||
+                (this._menuSelected[bridgeid] !== undefined &&
+                this._menuSelected[bridgeid]["lightid"] === undefined && groupid !== null)) {
+
+                hiddenLight = true;
+            }
+
+            if (hiddenLight) {
                 light.visible = false;
                 this._compactMenuBridges[bridgeid]["lights"]["hidden-item"] = light;
                 this._compactMenuBridges[bridgeid]["lights"]["default-item"] = light;
+            }
+
+            if (groupid !== null) {
+                this._compactMenuBridges[bridgeid]["lights"]["all-lights-item"] = light;
             }
         }
 
@@ -1887,15 +1757,27 @@ var PhueMenu = GObject.registerClass({
          * If brightness is possible, add a slider
          */
         if (groupid === null &&
-                data["lights"][lightid]["state"]["bri"] !== undefined) {
+            data["lights"][lightid]["state"]["bri"] !== undefined) {
 
-                itemBox.add(this._createBrightnessSlider(bridgeid, lightid, groupid, true));
+            defaultValue = 0;
+            if (data["lights"][lightid]["state"]["on"]) {
+                defaultValue = data["lights"][lightid]["state"]["bri"] / 255;
+            }
+
+            itemBox.add(this._createBrightnessSlider(bridgeid, lightid, groupid, defaultValue, true));
         }
 
         /**
          * Add switch for turning the light on/off
          */
-        light.add(this._createLightSwitch(bridgeid, lightid, groupid));
+        defaultValue = false;
+        if (groupid !== null) {
+            defaultValue = data["groups"][groupid]["state"]["all_on"];
+        } else {
+            defaultValue = data["lights"][lightid]["state"]["on"];
+        }
+
+        light.add(this._createLightSwitch(bridgeid, lightid, groupid, defaultValue));
 
         return light;
     }
@@ -2057,75 +1939,6 @@ var PhueMenu = GObject.registerClass({
 
 
     /**
-     * Get gnome icon by name.
-     * 
-     * @method _getGnomeIcon
-     * @private
-     * @param {String} path to icon
-     * @return {Object} icon or null if not found
-     */
-    _getGnomeIcon(iconName) {
-
-        let icon = null;
-
-        try {
-
-            icon = new St.Icon({
-                gicon : Gio.ThemedIcon.new(iconName),
-                style_class : 'system-status-icon',
-                y_expand: false,
-                y_align: Clutter.ActorAlign.CENTER
-            });
-
-            icon.set_size(IconSize * 0.8, IconSize * 0.8);
-
-            let iconEffect = this._getIconColorEffect(this._iconPack);
-            icon.add_effect(iconEffect);
-
-            iconEffect = this._getIconBriConEffect(this._iconPack);
-            icon.add_effect(iconEffect);
-
-        } catch(err) {
-            return null;
-        }
-
-        return icon;
-    }
-
-    /**
-     * Read icon from FS and return icon.
-     * 
-     * @method _getIconByPath
-     * @private
-     * @param {String} path to icon
-     * @return {Object} icon or null if not found
-     */
-    _getIconByPath(iconPath) {
-
-        let icon = null;
-
-        try {
-
-            icon = new St.Icon({
-                gicon : Gio.icon_new_for_string(iconPath),
-                style_class : 'system-status-icon',
-                y_expand: false,
-                y_align: Clutter.ActorAlign.CENTER
-            });
-
-            icon.set_size(IconSize, IconSize);
-
-            let iconEffect = this._getIconBriConEffect(this._iconPack);
-            icon.add_effect(iconEffect);
-
-        } catch(err) {
-            return null;
-        }
-
-        return icon;
-    }
-
-    /**
      * Gets the name for a group from data.
      * 
      * @method _getGroupName
@@ -2136,10 +1949,10 @@ var PhueMenu = GObject.registerClass({
      */
     _getGroupName(bridgeid, groupid) {
 
-        let groupName = _("no data");
+        let groupName = "";
 
         if (groupid === "0") {
-            groupName = _("Rooms & Zones");
+            groupName = this._("All Rooms & Zones");
         } else {
             groupName = this.bridesData[bridgeid]["groups"][groupid]["name"];
         }
@@ -2160,7 +1973,7 @@ var PhueMenu = GObject.registerClass({
 
         let iconPath = "";
 
-        if (this._iconPack === PhueIconPack.NONE) {
+        if (this._iconPack === PhuePanelMenu.PhueIconPack.NONE) {
             return null;
         }
 
@@ -2195,7 +2008,7 @@ var PhueMenu = GObject.registerClass({
 
         let iconPath = "";
 
-        if (this._iconPack === PhueIconPack.NONE) {
+        if (this._iconPack === PhuePanelMenu.PhueIconPack.NONE) {
             return null;
         }
 
@@ -2225,7 +2038,7 @@ var PhueMenu = GObject.registerClass({
 
         let iconPath = "";
 
-        if (this._iconPack === PhueIconPack.NONE) {
+        if (this._iconPack === PhuePanelMenu.PhueIconPack.NONE) {
             return null;
         }
 
@@ -2245,35 +2058,43 @@ var PhueMenu = GObject.registerClass({
 
     /**
      * Using compact menu, this function will set
-     * the control menu to desired group.
+     * the control menu to desired group or light.
      * 
-     * @method _setCompactMenuGroupControl
+     * @method _setCompactMenuControl
      * @private
      * @param {String} bridgeid
-     * @param {Number} groupid
+     * @param {Number} groupid or null
+     * @param {Number} lightid
      */
-    _setCompactMenuGroupControl(bridgeid, groupid) {
+     _setCompactMenuControl(bridgeid, groupid, lightid) {
+
+        let bridgePath;
 
         this._compactMenuBridges[bridgeid]["control"]["object"].visible = false;
 
         this._compactMenuBridges[bridgeid]["control"]["object"].menu.removeAll();
 
-        this._compactMenuBridges[bridgeid]["control"]["object"].label.text = _("Control");
+        this._compactMenuBridges[bridgeid]["control"]["object"].label.text = this._("Color & Temperature");
 
-        let controlItem = new PopupMenu.PopupMenuItem(
-            _("None")
-        )
+        let controlItem = new PopupMenu.PopupMenuItem("");
+        controlItem.x_align = Clutter.ActorAlign.CENTER;
 
         controlItem.remove_child(controlItem.label);
 
         let [hasXY, hasCT] = this._checkColorAttributeLightOrGroup(
             bridgeid,
-            "groups",
-            groupid
+            groupid === null ? "lights": "groups",
+            groupid === null ? lightid: groupid
         );
 
         if (hasXY || hasCT) {
             this._compactMenuBridges[bridgeid]["control"]["object"].visible = true;
+
+            if (groupid !== "0") {
+                let data = this.bridesData[bridgeid];
+                let controlName = groupid === null ? data["lights"][lightid]["name"] : data["groups"][groupid]["name"];
+                this._compactMenuBridges[bridgeid]["control"]["object"].label.text = controlName;
+            }
         }
 
         let colorPickerBox = new ColorPicker.ColorPickerBox({
@@ -2282,7 +2103,11 @@ var PhueMenu = GObject.registerClass({
         });
         controlItem.add(colorPickerBox.createColorBox());
 
-        let bridgePath = `${this._rndID()}::groups::${groupid}::action::hue`;
+        if (groupid !== null) {
+            bridgePath = `${this._rndID()}::groups::${groupid}::action::hue`;
+        } else {
+            bridgePath = `${this._rndID()}::lights::${lightid}::state::hue`;
+        }
 
         if (this.colorPicker[bridgeid] !== undefined) {
             delete(this.colorPicker[bridgeid]);
@@ -2370,7 +2195,67 @@ var PhueMenu = GObject.registerClass({
         }
 
         this._selectCompactMenuLights(bridgeid, groupid, null);
-        this._setCompactMenuGroupControl(bridgeid, groupid);
+        this._setCompactMenuControl(bridgeid, groupid, null);
+    }
+
+    /**
+     * Creates unselect button for lights menu item
+     * 
+     * @method _createUnselectLightButton
+     * @private
+     * @param {String} bridgeid
+     * @param {String} groupid
+     */
+    _createUnselectLightButton(bridgeid, groupid) {
+        if (this._compactMenuBridges[bridgeid]["lights"]["unselect-button"] !== null){
+            this._compactMenuBridges[bridgeid]["lights"]["object"].remove_child(
+                this._compactMenuBridges[bridgeid]["lights"]["unselect-button"]
+            );
+
+            this._compactMenuBridges[bridgeid]["lights"]["unselect-button"] = null;
+        }
+
+        let unselectButton = new St.Button({reactive: true, can_focus: true});
+
+        let buttonContent = null;
+        if (this._iconPack !== PhuePanelMenu.PhueIconPack.NONE) {
+            buttonContent = this._getIconByPath(Me.dir.get_path() + "/media/HueIcons/settingsSoftwareUpdate.svg");
+        }
+
+        if (buttonContent === null) {
+            buttonContent = new St.Label();
+            buttonContent.text = "<<<";
+        }
+
+        buttonContent.set_y_align(Clutter.ActorAlign.CENTER);
+        buttonContent.set_y_expand(true);
+
+        unselectButton.child = buttonContent;
+
+        unselectButton.connect(
+            "button-press-event",
+            () => {
+                if (this._menuSelected[bridgeid]["lightid"] !== undefined) {
+                    delete(this._menuSelected[bridgeid]["lightid"]);
+                }
+                this.writeMenuSelectedSettings();
+
+                if (this._compactMenuBridges[bridgeid]["lights"]["hidden-item"] !== null) {
+                    this._compactMenuBridges[bridgeid]["lights"]["hidden-item"].visible = true;
+                    this._compactMenuBridges[bridgeid]["lights"]["hidden-item"] = this._compactMenuBridges[bridgeid]["lights"]["all-lights-item"];
+                    this._compactMenuBridges[bridgeid]["lights"]["hidden-item"].visible = false;
+                }
+
+                this._selectCompactMenuLights(bridgeid, groupid, null);
+                this._setCompactMenuControl(bridgeid, groupid, null);
+
+                this._compactMenuBridges[bridgeid]["lights"]["object"].menu.open(true);
+            }
+        );
+
+        this._compactMenuBridges[bridgeid]["lights"]["unselect-button"] = unselectButton;
+
+        return unselectButton;
     }
 
     /**
@@ -2386,6 +2271,7 @@ var PhueMenu = GObject.registerClass({
     _selectCompactMenuLights(bridgeid, groupid, lightid) {
         let lightIcon = null;
         let data = this.bridesData[bridgeid];
+        let defaultValue;
 
         this._compactMenuClearTmpObjects(bridgeid, 2);
 
@@ -2415,7 +2301,15 @@ var PhueMenu = GObject.registerClass({
 
         if (groupid !== null) {
 
-            if (this._iconPack !== PhueIconPack.NONE) {
+            if (this._compactMenuBridges[bridgeid]["lights"]["unselect-button"] !== null){
+                this._compactMenuBridges[bridgeid]["lights"]["object"].remove_child(
+                    this._compactMenuBridges[bridgeid]["lights"]["unselect-button"]
+                );
+
+                this._compactMenuBridges[bridgeid]["lights"]["unselect-button"] = null;
+            }
+
+            if (this._iconPack !== PhuePanelMenu.PhueIconPack.NONE) {
                 lightIcon = this._getIconByPath(
                     Me.dir.get_path() + `/media/HueIcons/bulbGroup.svg`
                 );
@@ -2427,17 +2321,30 @@ var PhueMenu = GObject.registerClass({
 
             this._compactMenuBridges[bridgeid]["lights"]["icon"] = lightIcon;
 
-            this._compactMenuBridges[bridgeid]["lights"]["object"].label.text = _("Lights");
+            this._compactMenuBridges[bridgeid]["lights"]["object"].label.text = this._("All Lights");
 
-            let groupSwitch = this._createLightSwitch(bridgeid, null, groupid, 2);
-            this._compactMenuBridges[bridgeid]["lights"]["object"].add(groupSwitch);
+            if (this._menuSelected[bridgeid]["groupid"] !== undefined &&
+                this._menuSelected[bridgeid]["groupid"] !== 0) {
+
+                let lightsName = data["groups"][this._menuSelected[bridgeid]["groupid"]]["name"];
+                this._compactMenuBridges[bridgeid]["lights"]["object"].label.text = lightsName;
+            }
+
+            defaultValue = data["groups"][groupid]["state"]["all_on"];
+            let groupSwitch = this._createLightSwitch(bridgeid, null, groupid, defaultValue, 2);
+            this._compactMenuBridges[bridgeid]["lights"]["object"].insert_child_at_index(
+                groupSwitch,
+                this._compactMenuBridges[bridgeid]["lights"]["object"].get_children().length - 1
+            );
             this._compactMenuBridges[bridgeid]["lights"]["switch"] = groupSwitch;
 
         } else {
             lightIcon = this._tryGetLightIcon(data["lights"][lightid]);
-            this._compactMenuBridges[bridgeid]["lights"]["object"].insert_child_at_index(lightIcon, 1);
+            if (lightIcon !== null) {
+                this._compactMenuBridges[bridgeid]["lights"]["object"].insert_child_at_index(lightIcon, 1);
+            }
             this._compactMenuBridges[bridgeid]["lights"]["icon"] = lightIcon;
-            
+
             this._compactMenuBridges[bridgeid]["lights"]["object"].label.text = data["lights"][lightid]["name"];
 
             /**
@@ -2446,17 +2353,94 @@ var PhueMenu = GObject.registerClass({
             let lightSlider = null;
             if (data["lights"][lightid]["state"]["bri"] !== undefined) {
 
-                lightSlider = this._createBrightnessSlider(bridgeid, lightid, groupid, true);
+                if (data["lights"][lightid]["state"]["on"]) {
+                    defaultValue = data["lights"][lightid]["state"]["bri"] / 255;
+                } else {
+                    defaultValue = 0;
+                }
+
+                lightSlider = this._createBrightnessSlider(bridgeid, lightid, groupid, defaultValue, true);
                 this._compactMenuBridges[bridgeid]["lights"]["box"].add(lightSlider);
             }
 
-            let lightSwitch = this._createLightSwitch(bridgeid, lightid, groupid, 2);
+            this._compactMenuBridges[bridgeid]["lights"]["object"].insert_child_at_index(
+                this._createUnselectLightButton(bridgeid, this._menuSelected[bridgeid]["groupid"].toString()),
+                this._compactMenuBridges[bridgeid]["lights"]["object"].get_children().length - 1
+            );
 
-            this._compactMenuBridges[bridgeid]["lights"]["object"].add(lightSwitch);
+            defaultValue = data["lights"][lightid]["state"]["on"];
+            let lightSwitch = this._createLightSwitch(bridgeid, lightid, groupid, defaultValue, 2);
+
+            this._compactMenuBridges[bridgeid]["lights"]["object"].insert_child_at_index(
+                lightSwitch,
+                this._compactMenuBridges[bridgeid]["lights"]["object"].get_children().length - 1
+            );
 
             this._compactMenuBridges[bridgeid]["lights"]["switch"] = lightSwitch;
             this._compactMenuBridges[bridgeid]["lights"]["slider"] = lightSlider;
         }
+    }
+
+    /**
+     * Creates unselect button for groups menu item
+     * 
+     * @method _createUnselectGroupButton
+     * @private
+     * @param {String} bridgeid
+     * @param {String} groupid
+     */
+    _createUnselectGroupButton(bridgeid, groupid) {
+        if (this._compactMenuBridges[bridgeid]["groups"]["unselect-button"] !== null){
+            this._compactMenuBridges[bridgeid]["groups"]["object"].remove_child(
+                this._compactMenuBridges[bridgeid]["groups"]["unselect-button"]
+            );
+
+            this._compactMenuBridges[bridgeid]["groups"]["unselect-button"] = null;
+        }
+
+        let unselectButton = new St.Button({reactive: true, can_focus: true});
+
+        if (groupid === "0") {
+            this._compactMenuBridges[bridgeid]["groups"]["unselect-button"] = unselectButton;
+            return unselectButton;
+        }
+
+        let buttonContent = null;
+        if (this._iconPack !== PhuePanelMenu.PhueIconPack.NONE) {
+            buttonContent = this._getIconByPath(Me.dir.get_path() + "/media/HueIcons/settingsSoftwareUpdate.svg");
+        }
+
+        if (buttonContent === null) {
+            buttonContent = new St.Label();
+            buttonContent.text = "<<<";
+        }
+
+        buttonContent.set_y_align(Clutter.ActorAlign.CENTER);
+        buttonContent.set_y_expand(true);
+
+        unselectButton.child = buttonContent;
+
+        unselectButton.connect(
+            "button-press-event",
+            () => {
+                this._menuSelected[bridgeid] = {};
+                this.writeMenuSelectedSettings();
+
+                if (this._compactMenuBridges[bridgeid]["groups"]["hidden-item"] !== null) {
+                    this._compactMenuBridges[bridgeid]["groups"]["hidden-item"].visible = true;
+                    this._compactMenuBridges[bridgeid]["groups"]["hidden-item"] = this._compactMenuBridges[bridgeid]["groups"]["group-zero"];
+                    this._compactMenuBridges[bridgeid]["groups"]["hidden-item"].visible = false;
+                }
+
+                this._selectCompactMenuGroup(bridgeid, "0");
+
+                this._compactMenuBridges[bridgeid]["groups"]["object"].menu.open(true);
+            }
+        );
+
+        this._compactMenuBridges[bridgeid]["groups"]["unselect-button"] = unselectButton;
+
+        return unselectButton;
     }
 
     /**
@@ -2470,12 +2454,27 @@ var PhueMenu = GObject.registerClass({
     _selectCompactMenuGroup(bridgeid, groupid) {
         let groupIcon = null;
         let data = this.bridesData[bridgeid];
+        let defaultValue;
+
+        if (data["groups"] === undefined ||
+            data["groups"][groupid] === undefined ||
+            data["groups"][groupid]["lights"] === undefined) {
+
+            Utils.logDebug(`Can not select group ${groupid}. No data available.`);
+            return;
+        }
+
+        if (groupid === "0") {
+            this._openMenuDefault = this._compactMenuBridges[bridgeid]["groups"]["object"].menu;
+        } else {
+            this._openMenuDefault = this._compactMenuBridges[bridgeid]["lights"]["object"].menu;
+        }
 
         this._compactMenuBridges[bridgeid]["selected-group"] = groupid;
 
         this._compactMenuClearTmpObjects(bridgeid, 1);
 
-        if (this._compactMenuBridges[bridgeid]["groups"]["icon"] != null){
+        if (this._compactMenuBridges[bridgeid]["groups"]["icon"] !== null){
             this._compactMenuBridges[bridgeid]["groups"]["object"].remove_child(
                 this._compactMenuBridges[bridgeid]["groups"]["icon"]
             );
@@ -2483,7 +2482,7 @@ var PhueMenu = GObject.registerClass({
             this._compactMenuBridges[bridgeid]["groups"]["icon"] = null;
         }
 
-        if (this._compactMenuBridges[bridgeid]["groups"]["switch"] != null){
+        if (this._compactMenuBridges[bridgeid]["groups"]["switch"] !== null){
             this._compactMenuBridges[bridgeid]["groups"]["object"].remove_child(
                 this._compactMenuBridges[bridgeid]["groups"]["switch"]
             );
@@ -2491,7 +2490,7 @@ var PhueMenu = GObject.registerClass({
             this._compactMenuBridges[bridgeid]["groups"]["switch"] = null;
         }
 
-        if (this._compactMenuBridges[bridgeid]["groups"]["slider"] != null){
+        if (this._compactMenuBridges[bridgeid]["groups"]["slider"] !== null){
             this._compactMenuBridges[bridgeid]["groups"]["box"].remove_child(
                 this._compactMenuBridges[bridgeid]["groups"]["slider"]
             );
@@ -2500,7 +2499,9 @@ var PhueMenu = GObject.registerClass({
         }
 
         if (this._checkBrightnessAttributeLightOrGroup(bridgeid, "groups", groupid)) {
-            let groupSlider = this._createBrightnessSlider(bridgeid, null, groupid, true);
+            defaultValue = this._getGroupBrightness(bridgeid, groupid) / 255;
+
+            let groupSlider = this._createBrightnessSlider(bridgeid, null, groupid, defaultValue, true);
             this._compactMenuBridges[bridgeid]["groups"]["box"].insert_child_at_index(groupSlider, 1);
             this._compactMenuBridges[bridgeid]["groups"]["slider"] = groupSlider;
         }
@@ -2512,10 +2513,18 @@ var PhueMenu = GObject.registerClass({
             this._compactMenuBridges[bridgeid]["groups"]["icon"] = groupIcon;
         }
 
+        this._compactMenuBridges[bridgeid]["groups"]["object"].insert_child_at_index(
+            this._createUnselectGroupButton(bridgeid, groupid),
+            this._compactMenuBridges[bridgeid]["groups"]["object"].get_children().length - 1
+        );
+
         this._compactMenuBridges[bridgeid]["groups"]["object"].label.text = this._getGroupName(bridgeid, groupid);
 
         let groupSwitch = this._createGroupSwitch(bridgeid, groupid, true);
-        this._compactMenuBridges[bridgeid]["groups"]["object"].add(groupSwitch);
+        this._compactMenuBridges[bridgeid]["groups"]["object"].insert_child_at_index(
+            groupSwitch,
+            this._compactMenuBridges[bridgeid]["groups"]["object"].get_children().length - 1
+        );
         this._compactMenuBridges[bridgeid]["groups"]["switch"] = groupSwitch;
 
         /* lights */
@@ -2526,6 +2535,11 @@ var PhueMenu = GObject.registerClass({
             this._compactMenuBridges[bridgeid]["scenes"]["object"].menu.removeAll();
 
             this._compactMenuBridges[bridgeid]["scenes"]["object"].visible = true;
+
+            if (groupid !== null && groupid !== "0" && groupid !== 0) {
+                let scenesName = data["groups"][groupid]["name"];
+                this._compactMenuBridges[bridgeid]["scenes"]["object"].label.text = scenesName;
+            }
 
             let scenesItems = this._createMenuLights(
                 bridgeid,
@@ -2538,13 +2552,13 @@ var PhueMenu = GObject.registerClass({
                 this._compactMenuBridges[bridgeid]["scenes"]["object"].menu.addMenuItem(scenesItems[sceneItem]);
             }
 
-            if (groupid === "0") {
+            if (scenesItems.length === 0) {
                 this._compactMenuBridges[bridgeid]["scenes"]["object"].visible = false;
             }
         }
 
         /* control */
-        this._setCompactMenuGroupControl(bridgeid, groupid);
+        this._setCompactMenuControl(bridgeid, groupid, null);
 
         /**
          * ask for async all data,
@@ -2569,6 +2583,7 @@ var PhueMenu = GObject.registerClass({
 
         let menuItems = [];
         let groupIcon = null;
+        let defaultValue;
 
         if (data["groups"] === undefined) {
             return [];
@@ -2595,7 +2610,9 @@ var PhueMenu = GObject.registerClass({
             itemBox.vertical = true;
             itemBox.add(label);
             if (this._checkBrightnessAttributeLightOrGroup(bridgeid, "groups", groupid)) {
-                itemBox.add(this._createBrightnessSlider(bridgeid, null, groupid));
+                defaultValue = this._getGroupBrightness(bridgeid, groupid) / 255;
+
+                itemBox.add(this._createBrightnessSlider(bridgeid, null, groupid, defaultValue));
             }
             groupItem.insert_child_at_index(itemBox, 1);
 
@@ -2617,15 +2634,20 @@ var PhueMenu = GObject.registerClass({
                  * 'button-press-event' signal correctly
                  */
 
-                this._selectCompactMenuGroup(bridgeid, groupid);
-
-                if (this._compactMenuRemember) {
-                    this._openMenuDefault = this._compactMenuBridges[bridgeid]["lights"]["object"].menu;
+                if (!this.hue.instances[bridgeid].isConnected()) {
+                    return groupItem.originalActivate(event);
                 }
+
+                this._menuSelected[bridgeid] = {"groupid": groupid}
+                this.writeMenuSelectedSettings();
+
+                this._selectCompactMenuGroup(bridgeid, groupid);
 
                 this._compactMenuBridges[bridgeid]["lights"]["object"].menu.open(true);
 
-                this._compactMenuBridges[bridgeid]["groups"]["hidden-item"].visible = true;
+                if (this._compactMenuBridges[bridgeid]["groups"]["hidden-item"] !== undefined) {
+                    this._compactMenuBridges[bridgeid]["groups"]["hidden-item"].visible = true;
+                }
 
                 groupItem.visible = false;
                 this._compactMenuBridges[bridgeid]["groups"]["hidden-item"] = groupItem;
@@ -2633,9 +2655,30 @@ var PhueMenu = GObject.registerClass({
                 return groupItem.originalActivate(event);
             }
 
-            if (groupid === "0") {
+            let hiddenGroup = false;
+
+            if (this._menuSelected[bridgeid] !== undefined &&
+                this._menuSelected[bridgeid]["groupid"] !== undefined &&
+                groupid === this._menuSelected[bridgeid]["groupid"].toString()) {
+
+                hiddenGroup = true;
+            }
+
+            if ((this._menuSelected[bridgeid] === undefined ||
+                Object.keys(this._menuSelected[bridgeid]).length === 0) &&
+                groupid === "0") {
+
+                hiddenGroup = true;
+            }
+
+            if (hiddenGroup) {
+
                 groupItem.visible = false;
                 this._compactMenuBridges[bridgeid]["groups"]["hidden-item"] = groupItem;
+            }
+
+            if (groupid === "0") {
+                this._compactMenuBridges[bridgeid]["groups"]["group-zero"] = groupItem;
             }
 
             menuItems.push(groupItem);
@@ -2665,7 +2708,7 @@ var PhueMenu = GObject.registerClass({
         this._compactMenuBridges[bridgeid] = {};
 
         let groupsSubMenu = new PopupMenu.PopupSubMenuMenuItem(
-            _("No group selected")
+            this._("No group selected")
         );
 
         /* disable closing menu on item activated */
@@ -2684,47 +2727,23 @@ var PhueMenu = GObject.registerClass({
         this._compactMenuBridges[bridgeid]["groups"]["box"] = itemBox;
         this._compactMenuBridges[bridgeid]["groups"]["switch"] = null;
         this._compactMenuBridges[bridgeid]["groups"]["slider"] = null;
+        this._compactMenuBridges[bridgeid]["groups"]["unselect-button"] = null;
         this._compactMenuBridges[bridgeid]["selected-group"] = null;
-        this._compactMenuBridges[bridgeid]["selected-light"] = null;
 
         this._openMenuDefault = groupsSubMenu.menu;
 
         groupsSubMenu.connect(
             'button-press-event',
             () => {
-                if (this._compactMenuBridges[bridgeid]["selected-group"] !== null) {
-                    this._selectCompactMenuLights(
-                        bridgeid,
-                        this._compactMenuBridges[bridgeid]["selected-group"],
-                        null
-                    );
+                this.hue.instances[bridgeid].getAll();
+            }
+        );
 
-                    this._setCompactMenuGroupControl(
-                        bridgeid,
-                        this._compactMenuBridges[bridgeid]["selected-group"]
-                    );
-
-                    this._compactMenuBridges[bridgeid]["lights"]["hidden-item"].visible = true;
-
-                    this._compactMenuBridges[bridgeid]["lights"]["default-item"].visible = false;
-                    this._compactMenuBridges[bridgeid]["lights"]["hidden-item"] = this._compactMenuBridges[bridgeid]["lights"]["default-item"];
-                    
-                    /**
-                     * ask for async all data,
-                     * which will invoke refreshMenu
-                     */
-                    this.hue.instances[bridgeid].getAll();
-                }
-
-                if (!this._compactMenuRemember) {
-                    this._openMenuDefault = this._compactMenuBridges[bridgeid]["groups"]["object"].menu;
-                    return;
-                }
-
-                this._openMenuDefault = null;
-                if (!groupsSubMenu.menu.isOpen) {
-                    this._openMenuDefault = groupsSubMenu.menu;
-                }
+        this._lastOpenedMenu = {"last": groupsSubMenu.menu, "opening": null};
+        groupsSubMenu.menu.connect(
+            'open-state-changed',
+            (menu, isOpen) => {
+                this._handleLastOpenedMenu(menu, isOpen);
             }
         );
 
@@ -2772,8 +2791,6 @@ var PhueMenu = GObject.registerClass({
             groupsSubMenu.menu.addMenuItem(items[i]);
         }
 
-        this._openMenuDefault = this._compactMenuBridges[bridgeid]["groups"]["object"].menu;
-
         return menuItems;
     }
 
@@ -2789,7 +2806,7 @@ var PhueMenu = GObject.registerClass({
      */
     _createCompactMenuLights(bridgeid, data) {
         let lightsSubMenu = new PopupMenu.PopupSubMenuMenuItem(
-            _("None")
+            this._("No light selected")
         );
 
         /* disable closing menu on item activated */
@@ -2810,16 +2827,13 @@ var PhueMenu = GObject.registerClass({
                  * which will invoke refreshMenu
                  */
                 this.hue.instances[bridgeid].getAll();
+            }
+        );
 
-                if (!this._compactMenuRemember) {
-                    this._openMenuDefault = this._compactMenuBridges[bridgeid]["groups"]["object"].menu;
-                    return;
-                }
-
-                this._openMenuDefault = null;
-                if (!lightsSubMenu.menu.isOpen) {
-                    this._openMenuDefault = lightsSubMenu.menu;
-                }
+        lightsSubMenu.menu.connect(
+            'open-state-changed',
+            (menu, isOpen) => {
+                this._handleLastOpenedMenu(menu, isOpen);
             }
         );
 
@@ -2829,6 +2843,7 @@ var PhueMenu = GObject.registerClass({
         this._compactMenuBridges[bridgeid]["lights"]["box"] = itemBox;
         this._compactMenuBridges[bridgeid]["lights"]["switch"] = null;
         this._compactMenuBridges[bridgeid]["lights"]["slider"] = null;
+        this._compactMenuBridges[bridgeid]["lights"]["unselect-button"] = null;
 
         return lightsSubMenu;
     }
@@ -2845,29 +2860,14 @@ var PhueMenu = GObject.registerClass({
      */
     _createCompactMenuScenes(bridgeid, data) {
         let scenesSubMenu = new PopupMenu.PopupSubMenuMenuItem(
-            _("Scenes")
+            this._("Scenes")
         );
 
         /* disable closing menu on item activated */
         scenesSubMenu.menu.itemActivated = (animate) => {};
 
-        scenesSubMenu.connect(
-            'button-press-event',
-            () => {
-                if (!this._compactMenuRemember) {
-                    this._openMenuDefault = this._compactMenuBridges[bridgeid]["groups"]["object"].menu;
-                    return;
-                }
-
-                this._openMenuDefault = null;
-                if (!scenesSubMenu.menu.isOpen) {
-                    this._openMenuDefault = scenesSubMenu.menu;
-                }
-            }
-        );
-
         let scenesIcon = null;
-        if (this._iconPack !== PhueIconPack.NONE) {
+        if (this._iconPack !== PhuePanelMenu.PhueIconPack.NONE) {
             let iconPath = "";
 
             iconPath = Me.dir.get_path() + `/media/HueIcons/uicontrolsScenes.svg`
@@ -2879,6 +2879,13 @@ var PhueMenu = GObject.registerClass({
             scenesSubMenu.insert_child_at_index(scenesIcon, 1);
         }
 
+        scenesSubMenu.menu.connect(
+            'open-state-changed',
+            (menu, isOpen) => {
+                this._handleLastOpenedMenu(menu, isOpen);
+            }
+        );
+
         this._compactMenuBridges[bridgeid]["scenes"] = {};
         this._compactMenuBridges[bridgeid]["scenes"]["object"] = scenesSubMenu;
         this._compactMenuBridges[bridgeid]["scenes"]["icon"] = scenesIcon;
@@ -2887,7 +2894,7 @@ var PhueMenu = GObject.registerClass({
 
             scenesSubMenu.menu.addMenuItem(
                 new PopupMenu.PopupMenuItem(
-                    _("No room/zone selected")
+                    this._("No group selected")
                 )
             );
 
@@ -2914,29 +2921,14 @@ var PhueMenu = GObject.registerClass({
 
     _createCompactMenuControl(bridgeid, data) {
         let controlSubMenu = new PopupMenu.PopupSubMenuMenuItem(
-            _("Control")
+            this._("Color & Temperature")
         );
 
         /* disable closing menu on item activated */
         controlSubMenu.menu.itemActivated = (animate) => {};
 
-        controlSubMenu.connect(
-            'button-press-event',
-            () => {
-                if (!this._compactMenuRemember) {
-                    this._openMenuDefault = this._compactMenuBridges[bridgeid]["groups"]["object"].menu;
-                    return;
-                }
-
-                this._openMenuDefault = null;
-                if (!controlSubMenu.menu.isOpen) {
-                    this._openMenuDefault = controlSubMenu.menu;
-                }
-            }
-        );
-
         let controlIcon = null;
-        if (this._iconPack !== PhueIconPack.NONE) {
+        if (this._iconPack !== PhuePanelMenu.PhueIconPack.NONE) {
             let iconPath = "";
 
             iconPath = Me.dir.get_path() + `/media/HueIcons/uicontrolsColorScenes.svg`
@@ -2947,6 +2939,13 @@ var PhueMenu = GObject.registerClass({
         if (controlIcon !== null) {
             controlSubMenu.insert_child_at_index(controlIcon, 1);
         }
+
+        controlSubMenu.menu.connect(
+            'open-state-changed',
+            (menu, isOpen) => {
+                this._handleLastOpenedMenu(menu, isOpen);
+            }
+        );
 
         this._compactMenuBridges[bridgeid]["control"] = {};
         this._compactMenuBridges[bridgeid]["control"]["object"] = controlSubMenu;
@@ -2968,6 +2967,7 @@ var PhueMenu = GObject.registerClass({
 
         let menuItems = [];
         let groupIcon = null;
+        let defaultValue;
 
         if (data["groups"] === undefined) {
             return [];
@@ -2994,7 +2994,9 @@ var PhueMenu = GObject.registerClass({
             itemBox.vertical = true;
             itemBox.add(label);
             if (this._checkBrightnessAttributeLightOrGroup(bridgeid, "groups", groupid)) {
-                itemBox.add(this._createBrightnessSlider(bridgeid, null, groupid));
+                defaultValue = this._getGroupBrightness(bridgeid, groupid) / 255;
+
+                itemBox.add(this._createBrightnessSlider(bridgeid, null, groupid, defaultValue));
             }
             groupItem.insert_child_at_index(itemBox, 1);
 
@@ -3006,7 +3008,10 @@ var PhueMenu = GObject.registerClass({
                 groupItem.insert_child_at_index(groupIcon, 1);
             }
 
-            groupItem.add(this._createGroupSwitch(bridgeid, groupid));
+            groupItem.insert_child_at_index(
+                this._createGroupSwitch(bridgeid, groupid),
+                groupItem.get_children().length - 1
+            );
 
             menuItems.push(groupItem);
 
@@ -3111,6 +3116,7 @@ var PhueMenu = GObject.registerClass({
     _createEntertainmentSliderItem(bridgeid, name, defaultValue) {
         let entertainmentSliderItem;
         let bridgePath = `${this._rndID()}`;
+        let themeContext = St.ThemeContext.get_for_stage(global.stage);
 
         entertainmentSliderItem = new PopupMenu.PopupMenuItem(
             name
@@ -3121,7 +3127,7 @@ var PhueMenu = GObject.registerClass({
 
         let slider = new Slider.Slider(0);
 
-        slider.set_width(200);
+        slider.set_width(200 * themeContext.scaleFactor);
         slider.set_x_align(Clutter.ActorAlign.END);
         slider.set_x_expand(false);
         slider.value = defaultValue;
@@ -3192,9 +3198,9 @@ var PhueMenu = GObject.registerClass({
                     monitorRectangle.height
                 ];
 
-                serviceLabel = _("Display") + ` ${i + 1} (${displayGeometry[2]}x${displayGeometry[3]})`;
+                serviceLabel = this._("Display") + ` ${i + 1} (${displayGeometry[2]}x${displayGeometry[3]})`;
             } else {
-                serviceLabel = Utils.entertainmentModeText[service];
+                serviceLabel = this._(Utils.entertainmentModeText[service]);
             }
 
             let serviceItem = new PopupMenu.PopupMenuItem(
@@ -3292,13 +3298,13 @@ var PhueMenu = GObject.registerClass({
 
 
         /**
-         * Refresh menu item
+         * Refresh desplays item
          */
         let refreshMenuItem = new PopupMenu.PopupMenuItem(
-            _("Refresh displays")
+            this._("Refresh displays")
         );
 
-        if (this._iconPack !== PhueIconPack.NONE) {
+        if (this._iconPack !== PhuePanelMenu.PhueIconPack.NONE) {
             icon = this._getGnomeIcon("emblem-synchronizing-symbolic");
 
             if (icon !== null){
@@ -3379,11 +3385,20 @@ var PhueMenu = GObject.registerClass({
         }
 
         entertainmentMainItem = new PopupMenu.PopupSubMenuMenuItem(
-            _("Entertainment areas")
+            this._("Entertainment areas")
         );
 
         /* disable closing menu on item activated */
         entertainmentMainItem.menu.itemActivated = (animate) => {};
+
+        if (this._compactMenu) {
+            entertainmentMainItem.menu.connect(
+                'open-state-changed',
+                (menu, isOpen) => {
+                    this._handleLastOpenedMenu(menu, isOpen);
+                }
+            );
+        }
 
         this.refreshMenuObjects[`special::${bridgeid}::entertainment-label`] = {
             "bridgeid": bridgeid,
@@ -3395,9 +3410,12 @@ var PhueMenu = GObject.registerClass({
         entertainmentMainItem.set_x_align(Clutter.ActorAlign.FILL);
         entertainmentMainItem.label.set_x_expand(true);
 
-        entertainmentMainItem.add(this._createEntertainmentMainSwitch(bridgeid));
+        entertainmentMainItem.insert_child_at_index(
+            this._createEntertainmentMainSwitch(bridgeid),
+            entertainmentMainItem.get_children().length - 1
+        );
 
-        if (this._iconPack !== PhueIconPack.NONE) {
+        if (this._iconPack !== PhuePanelMenu.PhueIconPack.NONE) {
             let iconPath = "";
 
             iconPath = Me.dir.get_path() + `/media/HueIcons/roomsMancave.svg`
@@ -3411,14 +3429,14 @@ var PhueMenu = GObject.registerClass({
 
         let entertainmentIntensityItem = this._createEntertainmentSliderItem(
             bridgeid,
-            "Intensity",
+            this._("Intensity"),
             ((255 - this._isStreaming[bridgeid]["intensity"] - 40)) / 100
         );
         entertainmentMainItem.menu.addMenuItem(entertainmentIntensityItem);
 
         let entertainmentBrightnessItem = this._createEntertainmentSliderItem(
             bridgeid,
-            "Brightness",
+            this._("Brightness"),
             this._isStreaming[bridgeid]["brightness"] / 255
         );
         entertainmentMainItem.menu.addMenuItem(entertainmentBrightnessItem);
@@ -3449,11 +3467,20 @@ var PhueMenu = GObject.registerClass({
         }
 
         entertainmentModeItem = new PopupMenu.PopupSubMenuMenuItem(
-            _("Entertainment mode")
+            this._("Entertainment mode")
         );
 
         /* disable closing menu on item activated */
         entertainmentModeItem.menu.itemActivated = (animate) => {};
+
+        if (this._compactMenu) {
+            entertainmentModeItem.menu.connect(
+                'open-state-changed',
+                (menu, isOpen) => {
+                    this._handleLastOpenedMenu(menu, isOpen);
+                }
+            );
+        }
 
         this.refreshMenuObjects[`special::${bridgeid}::entertainment-mode-label`] = {
             "bridgeid": bridgeid,
@@ -3462,7 +3489,7 @@ var PhueMenu = GObject.registerClass({
             "tmpTier": 0
         }
 
-        if (this._iconPack !== PhueIconPack.NONE) {
+        if (this._iconPack !== PhuePanelMenu.PhueIconPack.NONE) {
             let iconPath = "";
 
             iconPath = Me.dir.get_path() + `/media/HueIcons/roomsMancave.svg`
@@ -3482,15 +3509,72 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
-     * Select default group in compact menu.
+     * Select saved group and light in compact menu.
      * 
-     * @method _selectCompactMenuDefaultGroup
+     * @method _selectCompactMenu
      * @private
      * @param {String} bridgeid 
      */
-    _selectCompactMenuDefaultGroup(bridgeid) {
-        /* select all lights by default */
-        this._selectCompactMenuGroup(bridgeid, "0");
+    _selectCompactMenu(bridgeid) {
+
+        if (this.bridesData[bridgeid] === undefined ||
+            this._menuSelected[bridgeid] === undefined) {
+
+            this._menuSelected[bridgeid] = {};
+        }
+
+        if (this._menuSelected[bridgeid]["lightid"] === 0) {
+            /* 0 is for no light, it is unknown lightid */
+            delete(this._menuSelected[bridgeid]["lightid"]);
+        }
+
+        if (this._menuSelected[bridgeid]["groupid"] !== undefined &&
+            this.bridesData[bridgeid]["groups"][this._menuSelected[bridgeid]["groupid"]] === undefined) {
+            delete(this._menuSelected[bridgeid]["groupid"]);
+        }
+
+        if (this._menuSelected[bridgeid]["lightid"] !== undefined &&
+            this.bridesData[bridgeid]["lights"][this._menuSelected[bridgeid]["lightid"]] === undefined) {
+
+            delete(this._menuSelected[bridgeid]["lightid"]);
+        }
+
+        if (this._menuSelected[bridgeid] === undefined ||
+            this._menuSelected[bridgeid]["groupid"] === undefined ||
+            this._menuSelected[bridgeid]["groupid"] === 0) {
+
+            this._selectCompactMenuGroup(bridgeid, "0");
+
+        } else {
+            this._selectCompactMenuGroup(
+                bridgeid,
+                this._menuSelected[bridgeid]["groupid"],
+                null
+            );
+
+            this._setCompactMenuControl(
+                bridgeid,
+                this._menuSelected[bridgeid]["groupid"],
+                null
+            );
+        }
+
+
+        if (this._menuSelected[bridgeid] !== undefined &&
+            this._menuSelected[bridgeid]["lightid"] !== undefined) {
+
+            this._selectCompactMenuLights(
+                bridgeid,
+                null,
+                this._menuSelected[bridgeid]["lightid"]
+            );
+
+            this._setCompactMenuControl(
+                bridgeid,
+                null,
+                this._menuSelected[bridgeid]["lightid"]
+            );
+        }
     }
 
     /**
@@ -3525,17 +3609,17 @@ var PhueMenu = GObject.registerClass({
             this._createCompactMenuLights(bridgeid, data)
         );
 
+        items = items.concat(
+            this._createCompactMenuControl(bridgeid, data)
+        );
+
         if (this._showScenes) {
             items = items.concat(
                 this._createCompactMenuScenes(bridgeid, data)
             );
         }
 
-        items = items.concat(
-            this._createCompactMenuControl(bridgeid, data)
-        );
-
-        this._selectCompactMenuDefaultGroup(bridgeid);
+        this._selectCompactMenu(bridgeid);
 
         return items;
     }
@@ -3704,26 +3788,26 @@ var PhueMenu = GObject.registerClass({
      * @param {groupid} groupid
      */
     _startEntertainmentStream(bridgeid, groupid) {
-        let gradient = false;
+        let gradient = -1;
+        let counter = 0;
         let streamingLights = [];
+        let gradientLightStrips = ["LCX001", "LCX002", "LCX003", "LCX004", "LCX005"];
+
+        this._isStreaming[bridgeid]["entertainment"].setGID(this._isStreaming[bridgeid]["gid"]);
+
         for (let i in this.bridesData[bridgeid]["groups"][groupid]["lights"]) {
             let light = this.bridesData[bridgeid]["groups"][groupid]["lights"][i];
 
-            if (this.bridesData[bridgeid]["lights"][light]["productname"].indexOf("gradient") >= 0) {
-                gradient = true;
+            if (gradientLightStrips.includes(this.bridesData[bridgeid]["lights"][light]["modelid"])) {
+                gradient = counter;
+                counter += 7;
                 continue;
             }
 
+            counter++;
+
             streamingLights.push(parseInt(light));
         }
-
-        /**
-         * gradient light strip not working with api 1 anymore:(
-         * It even disables the stream to the entertainment group now...
-         * We need to wait for api 2 to be publicized by Philips Hue...
-         * TODO
-         */
-        gradient = false;
 
         let streamingLightsLocations = {};
         for (let i in this.bridesData[bridgeid]["groups"][groupid]["locations"]) {
@@ -3783,8 +3867,8 @@ var PhueMenu = GObject.registerClass({
 
         if (!this.hue.instances[bridgeid].isConnected()) {
             Main.notify(
-                _("Hue Lights - key shortcut: ") + this._syncSelectionKeyShortcut,
-                _("Please check the connection to Philips Hue bridge.")
+                "Hue Lights - " + this._("key shortcut") + ": " + this._syncSelectionKeyShortcut,
+                this._("Please check the connection to Philips Hue bridge.")
             );
 
             return;
@@ -3795,8 +3879,8 @@ var PhueMenu = GObject.registerClass({
         if (this._isStreaming[bridgeid]["state"] === StreamState.RUNNING) {
             if (this._isStreaming[bridgeid]["groupid"] !== groupid) {
                 Main.notify(
-                    _("Hue Lights - key shortcut: ") + this._syncSelectionKeyShortcut,
-                    _("Disable previous entertainment stream.")
+                    "Hue Lights - " + this._("key shortcut") + ": " + this._syncSelectionKeyShortcut,
+                    this._("Disable previous entertainment area.")
                 );
 
                 Utils.logDebug(`Entertainment group ${this._isStreaming[bridgeid]["groupid"]} is already streaming.`);
@@ -3859,8 +3943,8 @@ var PhueMenu = GObject.registerClass({
             this.hue.bridges[bridgeid]["clientkey"] === undefined) {
 
             Main.notify(
-                _("Hue Lights - ") + this.hue.bridges[bridgeid]["name"],
-                _("Please, remove Philips hue bridge and connect it again.")
+                "Hue Lights - " + this.hue.bridges[bridgeid]["name"],
+                this._("Please remove Philips Hue bridge and connect it again.")
             );
 
             Utils.logDebug("Client key not available");
@@ -3968,6 +4052,8 @@ var PhueMenu = GObject.registerClass({
                     this._isStreaming[bridgeid]["state"] = StreamState.STOPPED;
                 }
 
+                this._isStreaming[bridgeid]["gid"] = "";
+
                 break;
 
             case StreamState.RUNNING:
@@ -4009,6 +4095,75 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
+     * Sets the color of slider
+     * 
+     * @method _setSliderColor
+     * @private
+     * @param {Object} slider
+     * @param {Array} array with RGB
+     */
+    _setSliderColor(object, [r, g, b]) {
+        r = ('0' + r.toString(16)).slice(-2);
+        g = ('0' + g.toString(16)).slice(-2);
+        b = ('0' + b.toString(16)).slice(-2);
+
+        let styleColor = `#${r}${g}${b}`;
+
+        object.style = `-barlevel-active-background-color: ${styleColor}; -barlevel-active-border-color: ${styleColor}`;
+    }
+
+    /**
+     * Sets the color of switch
+     * 
+     * @method _setSwitchColor
+     * @private
+     * @param {Object} switch
+     * @param {Array} array with RGB
+     */
+    _setSwitchColor(object, [r, g, b]) {
+        let color = new Clutter.Color({
+            red: r,
+            green: g,
+            blue: b,
+            alpha: 255
+        });
+
+        object.clear_effects();
+
+        let colorEffect = new Clutter.ColorizeEffect({tint: color});
+        object.add_effect(colorEffect);
+
+        let briConEffect = new Clutter.BrightnessContrastEffect();
+        briConEffect.set_brightness(0.4);
+        briConEffect.set_contrast(0.4);
+
+        object.add_effect(briConEffect);
+    }
+
+    /**
+     * Refresh bridge name in menu.
+     * 
+     * @method _refreshSyncBoxMainLabel
+     * @private
+     * @param {String} syncbox id
+     */
+     _refreshBridgeMainLabel(bridgeid) {
+
+        let value;
+
+        if (this._mainLabel[bridgeid] === undefined) {
+            return;
+        }
+
+        value = this.hue.bridges[bridgeid]["name"];
+        if (! this.hue.instances[bridgeid].isConnected()) {
+            value = value + " - " + this._("disconnected");
+        }
+
+        this._mainLabel[bridgeid].text = value;
+    }
+
+    /**
      * If change happened, the controls in menu are refreshed.
      * 
      * @method refreshMenu
@@ -4025,7 +4180,7 @@ var PhueMenu = GObject.registerClass({
         let g = 0;
         let b = 0;
 
-        Utils.logDebug("Refreshing menu.");
+        Utils.logDebug("Refreshing bridge menu.");
 
         for (let bridgePath in this.refreshMenuObjects) {
 
@@ -4033,7 +4188,7 @@ var PhueMenu = GObject.registerClass({
             object = this.refreshMenuObjects[bridgePath]["object"];
             type = this.refreshMenuObjects[bridgePath]["type"];
 
-            if (this.bridesData[bridgeid].length === 0) {
+            if (Object.keys(this.bridesData[bridgeid]).length === 0) {
                 continue;
             }
 
@@ -4125,22 +4280,21 @@ var PhueMenu = GObject.registerClass({
                     }
 
                     if (parsedBridgePath[1] === "lights" &&  !value["on"] ||
-                        (parsedBridgePath[1] === "groups" && this._getGroupBrightness(bridgeid, parsedBridgePath[2]) === 0)) {
+                        (parsedBridgePath[1] === "groups" &&
+                        this._getGroupBrightness(bridgeid, parsedBridgePath[2]) === 0)) {
 
                         object.style = null;
 
                         break;
                     }
 
-                    [r, g, b] = this._getLightOrGroupColor(bridgeid, parsedBridgePath, value);
+                    if (parsedBridgePath[1] === "lights") {
+                        [r, g, b] = this._getLightOrGroupColor(bridgeid, null, parsedBridgePath[2]);
+                    } else {
+                        [r, g, b] = this._getLightOrGroupColor(bridgeid, parsedBridgePath[2], null);
+                    }
 
-                    r = ('0' + r.toString(16)).slice(-2);
-                    g = ('0' + g.toString(16)).slice(-2);
-                    b = ('0' + b.toString(16)).slice(-2);
-
-                    let styleColor = `#${r}${g}${b}`;
-
-                    object.style = `-barlevel-active-background-color: ${styleColor}; -barlevel-active-border-color: ${styleColor}`;
+                    this._setSliderColor(object, [r, g, b]);
 
                     break;
 
@@ -4162,32 +4316,21 @@ var PhueMenu = GObject.registerClass({
                     }
 
                     if (parsedBridgePath[1] === "lights" &&  !value["on"] ||
-                        (parsedBridgePath[1] === "groups" && this._getGroupBrightness(bridgeid, parsedBridgePath[2]) === 0)) {
+                        (parsedBridgePath[1] === "groups" &&
+                        this._getGroupBrightness(bridgeid, parsedBridgePath[2]) === 0)) {
 
                         object.clear_effects();
 
                         break;
                     }
 
-                    [r, g, b] = this._getLightOrGroupColor(bridgeid, parsedBridgePath, value);
+                    if (parsedBridgePath[1] === "lights") {
+                        [r, g, b] = this._getLightOrGroupColor(bridgeid, null, parsedBridgePath[2]);
+                    } else {
+                        [r, g, b] = this._getLightOrGroupColor(bridgeid, parsedBridgePath[2], null);
+                    }
 
-                    let color = new Clutter.Color({
-                        red: r,
-                        green: g,
-                        blue: b,
-                        alpha: 255
-                    });
-
-                    object.clear_effects();
-
-                    let colorEffect = new Clutter.ColorizeEffect({tint: color});
-                    object.add_effect(colorEffect);
-
-                    let briConEffect = new Clutter.BrightnessContrastEffect();
-                    briConEffect.set_brightness(0.4);
-                    briConEffect.set_contrast(0.4);
-
-                    object.add_effect(briConEffect);
+                    this._setSwitchColor(object, [r, g, b]);
 
                     break;
 
@@ -4260,7 +4403,7 @@ var PhueMenu = GObject.registerClass({
 
                 case "entertainment-label":
 
-                    object.text = _("Entertainment areas");
+                    object.text = this._("Entertainment areas");
 
                     if (this.bridesData[bridgeid]["groups"] === undefined) {
                         break;
@@ -4272,7 +4415,7 @@ var PhueMenu = GObject.registerClass({
                         }
 
                         if (this.bridesData[bridgeid]["groups"][groupid]["stream"]["active"]) {
-                            object.text = `${this.bridesData[bridgeid]["groups"][groupid]["name"]} ` + _("is syncing");
+                            object.text = `${this.bridesData[bridgeid]["groups"][groupid]["name"]} ` + this._("is syncing");
                         }
                     }
 
@@ -4302,7 +4445,7 @@ var PhueMenu = GObject.registerClass({
 
                 case "entertainment-mode-label":
 
-                    object.text = _("Entertainment mode");
+                    object.text = this._("Entertainment mode");
 
                     if (this._isStreaming[bridgeid] === undefined) {
                         break;
@@ -4325,7 +4468,7 @@ var PhueMenu = GObject.registerClass({
                         additionlLabel = ` ${monitorN + 1} (${w}x${h})`;
                     }
 
-                    object.text = _("Sync") + ` ${Utils.entertainmentModeText[this._isStreaming[bridgeid]["entertainmentMode"]]}${additionlLabel}`;
+                    object.text = this._("Sync") + " " + this._(Utils.entertainmentModeText[this._isStreaming[bridgeid]["entertainmentMode"]]) + " " + additionlLabel;
 
                     break;
 
@@ -4378,7 +4521,7 @@ var PhueMenu = GObject.registerClass({
 
                 case "entertainment-default-selection-label":
 
-                    object.text = _("Set shortcut for ") + `${Utils.entertainmentModeText[Utils.entertainmentMode.SELECTION]}`;
+                    object.text = this._("Set shortcut for") + " " + this._(Utils.entertainmentModeText[Utils.entertainmentMode.SELECTION]);
 
                     if (this._syncSelectionDefault !== {}) {
                         bridgeid = this._syncSelectionDefault["bridgeid"];
@@ -4390,8 +4533,9 @@ var PhueMenu = GObject.registerClass({
 
                         let bridgeName = this.bridesData[bridgeid]["config"]["name"];
                         let groupName = this.bridesData[bridgeid]["groups"][groupid]["name"]
-                        object.text = Utils.entertainmentModeText[Utils.entertainmentMode.SELECTION];
-                        object.text = object.text + ` ${_("shortcut")}: ${bridgeName}-${groupName}`;
+                        object.text = this._(Utils.entertainmentModeText[Utils.entertainmentMode.SELECTION]);
+                        object.text = object.text + " " + this._("shortcut");
+                        object.text = object.text + `: ${bridgeName}-${groupName}`;
                         object.text = object.text + ` (${this._syncSelectionKeyShortcut})`;
                     }
 
@@ -4435,14 +4579,19 @@ var PhueMenu = GObject.registerClass({
                     this.bridesData[bridgeid] = this.hue.instances[bridgeid].getAsyncData();
                 }
 
-                this._checkRebuildReady(bridgeid);
+                this._checkRebuildReady(bridgeid, this._rebuildMenu.bind(this));
 
                 if (this.bridgeInProblem[bridgeid] !== undefined &&
                     this.bridgeInProblem[bridgeid]) {
-                        Main.notify(
-                            _("Hue Lights - ") + this.hue.bridges[bridgeid]["name"],
-                            _("Connection to Philips Hue bridge restored")
-                        );
+
+                        if ((! this._bridgesInMenuShowed.includes(bridgeid)) &&
+                            (! this._bridgesInMenuShowed.includes(this._defaultBridgeInMenu))
+                            ) {
+
+                            this.rebuildMenuStart();
+                        } else {
+                            this._refreshBridgeMainLabel(bridgeid);
+                        }
                 }
                 this.bridgeInProblem[bridgeid] = false;
 
@@ -4470,7 +4619,11 @@ var PhueMenu = GObject.registerClass({
                         this.hue.instances[bridgeid].getAsyncData()
                     );
 
-                    this.queueNotify(bridgeid);
+                    this.queueNotify(
+                        bridgeid,
+                        this._waitingNotificationMessage[bridgeid]["title"],
+                        this._waitingNotificationMessage[bridgeid]["body"]
+                    );
                 }
             }
         );
@@ -4491,22 +4644,12 @@ var PhueMenu = GObject.registerClass({
             () => {
                 let streamRes = this.hue.instances[bridgeid].getAsyncData();
 
-                if (streamRes[0] !== undefined && streamRes[0]["success"] !== undefined) {
-                    /**
-                     * TODO After the last update 29/7/2021 an issue occured.
-                     * Even if we asynchronously check that the stream is successfully started,
-                     * the bridge is not ready to accept the UDP msg yet:(.
-                     * I suspect, the bridge will send a push notification when stream is ready,
-                     * but the new api with push notifications was not published yet and it is
-                     * unknown :-(.
-                     * So lets just wait a moment for bridge to be ready.
-                     * This is a workaround - the timeout should not be needed.
-                     * I will rewrite once they fix the bridge or provide the new api.
-                     */
-                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 700, () => {
-                        this._isStreaming[bridgeid]["state"] = StreamState.STARTED;
-                        this._checkHueLightsIsStreaming(bridgeid);
-                    });
+                /* if the event stream is running, the bridge uses the new api */
+                if (! this.hue.instances[bridgeid].isEventStream() &&
+                    streamRes[0] !== undefined && streamRes[0]["success"] !== undefined) {
+
+                    this._isStreaming[bridgeid]["state"] = StreamState.STARTED;
+                    this._checkHueLightsIsStreaming(bridgeid);
                 }
                 this.hue.instances[bridgeid].getAll();
             }
@@ -4518,25 +4661,36 @@ var PhueMenu = GObject.registerClass({
             () => {
                 this.bridesData[bridgeid] = {};
 
-                this._checkRebuildReady(bridgeid);
+                this._checkRebuildReady(bridgeid, this._rebuildMenu.bind(this));
+
+                if (this.hue.bridges[bridgeid]["username"] === undefined) {
+                    /* ignore - bridge not paired (yet) */
+                    return;
+                }
 
                 if (this.bridgeInProblem[bridgeid] !== undefined &&
                     this.bridgeInProblem[bridgeid]) {
                     /* already noticed */
                     return;
-                    }
-
-                Main.notify(
-                    _("Hue Lights - ") + this.hue.bridges[bridgeid]["name"],
-                    _("Please check the connection to Philips Hue bridge.")
-                );
+                }
 
                 this.bridgeInProblem[bridgeid] = true;
 
                 this._checkHueLightsIsStreaming(bridgeid);
+                this._refreshBridgeMainLabel(bridgeid);
             }
         );
         this._appendSignal(signal, this.hue.instances[bridgeid], true);
+
+        signal = this.hue.instances[bridgeid].connect(
+            "event-stream-data",
+            () => {
+                this._handleEventStream(
+                    bridgeid,
+                    this.hue.instances[bridgeid].getEvent()
+                );
+            }
+        );
     }
 
     /**
@@ -4556,8 +4710,8 @@ var PhueMenu = GObject.registerClass({
                 Utils.logDebug(`Another app already streaming group ${groupid} on bridge ${bridgeid}`);
 
                 Main.notify(
-                    _("Hue Lights - ") + this.hue.bridges[bridgeid]["name"],
-                    _("Another app is already using the entertainment areas.")
+                    "Hue Lights - " + this.hue.bridges[bridgeid]["name"],
+                    this._("Another app is already using the entertainment areas.")
                 );
                 return true;
             }
@@ -4613,6 +4767,8 @@ var PhueMenu = GObject.registerClass({
             } else {
                 this._isStreaming[bridgeid]["entertainmentMode"] = Utils.entertainmentMode.SYNC;
             }
+
+            this._isStreaming[bridgeid]["gid"] = "";
         }
 
         if (tryAutostart &&
@@ -4691,50 +4847,6 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
-     * Append signal to the disctonary with signals.
-     * 
-     * @method _appendSignal
-     * @private
-     * @param {Number} signal number
-     * @param {Object} object signal is connected
-     * @param {Boolean} disconnect all signals
-     * @param {Boolean} disconnect temporal signals
-     */
-    _appendSignal(signal, object, rebuild, tmp = false) {
-        this._signals[signal] = {
-            "object": object,
-            "rebuild": rebuild,
-            "tmp": tmp
-        }
-    }
-
-    /**
-     * Disconect signals
-     * 
-     * @method disconnectSignals
-     * @param {Boolean} disconnect all
-     * @param {Boolean} disconnect only tmp signals and return
-     */
-    disconnectSignals(all, onlyTmp = false) {
-        let toDisconnect = "rebuild";
-
-        if (onlyTmp) {
-            toDisconnect = "tmp";
-        }
-
-        for (let id in this._signals) {
-            if (this._signals[id][toDisconnect] || all) {
-                try {
-                    this._signals[id]["object"].disconnect(id);
-                    delete(this._signals[id]);
-                } catch {
-                    continue;
-                }
-            }
-        }
-    }
-
-    /**
      * Prepare list of bridges shown in the menu.
      * 
      * @method getBridgesInMenu
@@ -4744,6 +4856,7 @@ var PhueMenu = GObject.registerClass({
         let bridges = [];
         let currentConnected = [];
         let defaultIsConnected = false;
+        this._defaultBridgeInMenu = "";
 
         /**
          * check if any bridge is online,
@@ -4789,6 +4902,7 @@ var PhueMenu = GObject.registerClass({
 
             bridges.push(bridgeid);
             defaultExists = true;
+            this._defaultBridgeInMenu = bridgeid;
         }
 
         if (!defaultExists) {
@@ -4821,16 +4935,16 @@ var PhueMenu = GObject.registerClass({
              */
             let swichMenuText;
             if (this._compactMenu) {
-                swichMenuText = _("Switch to standard menu");
+                swichMenuText = this._("Switch to standard menu");
             }
             if (!this._compactMenu) {
-                swichMenuText = _("Switch to compact menu");
+                swichMenuText = this._("Switch to compact menu");
             }
             let switchMenuItem = new PopupMenu.PopupMenuItem(
                 swichMenuText
             );
 
-            if (this._iconPack !== PhueIconPack.NONE) {
+            if (this._iconPack !== PhuePanelMenu.PhueIconPack.NONE) {
                 icon = this._getIconByPath(Me.dir.get_path() + "/media/HueIcons/settingsSoftwareUpdate.svg");
 
                 if (icon !== null){
@@ -4850,52 +4964,53 @@ var PhueMenu = GObject.registerClass({
             items.push(switchMenuItem);
         }
 
-        /**
-         * Refresh menu item
-         */
-        let refreshMenuItem = new PopupMenu.PopupMenuItem(
-            _("Refresh menu")
+        let settingsItems = this._createDefaultSettingsItems(
+            this.rebuildMenuStart.bind(this)
         );
-
-        if (this._iconPack !== PhueIconPack.NONE) {
-            icon = this._getGnomeIcon("emblem-synchronizing-symbolic");
-
-            if (icon !== null){
-                refreshMenuItem.insert_child_at_index(icon, 1);
-            }
+        for (let settingsItem of settingsItems) {
+            items.push(settingsItem);
         }
-
-        signal = refreshMenuItem.connect(
-            'button-press-event',
-            () => { this.rebuildMenuStart(); }
-        );
-        this._appendSignal(signal, refreshMenuItem, true, true);
-
-        items.push(refreshMenuItem);
-
-        /**
-         * Settings menu item
-         */
-        let prefsMenuItem = new PopupMenu.PopupMenuItem(
-            _("Settings")
-        );
-
-        if (this._iconPack !== PhueIconPack.NONE) {
-            icon = this._getIconByPath(Me.dir.get_path() + "/media/HueIcons/tabbarSettings.svg");
-
-            if (icon !== null) {
-                prefsMenuItem.insert_child_at_index(icon, 1);
-            }
-        }
-
-        signal = prefsMenuItem.connect(
-            'button-press-event',
-            () => {Util.spawn(["gnome-shell-extension-prefs", Me.uuid]);}
-        );
-        this._appendSignal(signal, prefsMenuItem, true, true);
-        items.push(prefsMenuItem);
 
         return items;
+    }
+
+    /**
+     * Sets timer to open last opened menu if menu is closed.
+     * 
+     * @method _handleLastOpenedMenu
+     * @private
+     * @param {Object} menu
+     * @return {Boolean} is the menu opened
+     */
+    _handleLastOpenedMenu(menu, isOpen) {
+        if (isOpen) {
+            /* another menu opened instead, ignore timed event*/
+            this._lastOpenedMenu["opening"] = null;
+        }
+
+        if (!isOpen && this._lastOpenedMenu["last"] !== null) {
+            this._lastOpenedMenu["opening"] = this._lastOpenedMenu["last"];
+
+            /**
+             * sets timed event to open last closed menu
+             * the timer is needed because if I open another menu
+             * the first menu closes and without the timer I would open
+             * different menu instad
+             */
+            let timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                if (this._lastOpenedMenu["opening"] !== null) {
+                    this._lastOpenedMenu["opening"].open(true);
+                    this._lastOpenedMenu["opening"] = null;
+                }
+
+                this._timers = Utils.removeFromArray(this._timers, timerId);
+            });
+            this._timers.push(timerId);
+        }
+
+        if (!isOpen) {
+            this._lastOpenedMenu["last"] = menu;
+        }
     }
 
     /**
@@ -4905,10 +5020,13 @@ var PhueMenu = GObject.registerClass({
      */
     rebuildMenuStart() {
 
-        Utils.logDebug("Rebuilding menu started.");
+        super.rebuildMenuStart();
+
+        Utils.logDebug("Rebuilding bridge menu started.");
+
+        this.checkAvailability(this.hue.bridges, true);
 
         this.disableStreams();
-        this.disconnectSignals(false);
 
         for (let bridgeid in this.colorPicker){
             if (this.colorPicker[bridgeid].destroy) {
@@ -4918,19 +5036,20 @@ var PhueMenu = GObject.registerClass({
             delete(this.colorPicker[bridgeid]);
         }
 
-        let oldItems = this.menu._getMenuItems();
-        for (let item in oldItems){
-            oldItems[item].destroy();
-        }
-
         for (let settingsItem of this._createSettingItems(true)) {
             this.menu.addMenuItem(settingsItem);
         }
 
-        this._rebuildingMenu = true;
-        this._rebuildingMenuRes = {};
         for (let bridgeid in this.hue.bridges) {
             this._rebuildingMenuRes[bridgeid] = false;
+        }
+
+        /**
+         * if no device should be connected,
+         * thus we are invisible - we end here
+         */
+         if (!this.visible) {
+            return;
         }
 
         /**
@@ -4938,16 +5057,20 @@ var PhueMenu = GObject.registerClass({
          * within the time
          * this will build menu for bridges that responded so far
          */
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 5000, () => {
+        let timeout = (this._connectionTimeout + 1) * 1000;
+        let timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeout, () => {
             if (this._rebuildingMenu) {
-                Utils.logDebug("No response from all bridges. Rebuilding menu anyway.");
+                Utils.logDebug("Not all bridges responded. Rebuilding menu anyway.");
 
                 this._rebuildingMenu = false;
                 this._rebuildingMenuRes = {};
 
-                this._rebuildMenu(this._rebuildingMenuFirstTime);
+                this._rebuildMenu();
+
+                this._timers = Utils.removeFromArray(this._timers, timerId);
             }
         });
+        this._timers.push(timerId);
 
         this.hue.checkBridges(false);
 
@@ -4958,58 +5081,25 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
-     * Checks whether there are data form all bridges to build the menu.
-     * If all data are here, run rebuild menu.
-     * 
-     * @method _checkRebuildReady
-     * @private
-     * @param {String} bridgeid of bridge that provided last data
-     * @param {Boolean} is this first time building the menu
-     */
-    _checkRebuildReady(bridgeid) {
-
-        if (! this._rebuildingMenu) {
-            return;
-        }
-
-        this._rebuildingMenuRes[bridgeid] = true;
-
-
-        for (let bridgeid in this._rebuildingMenuRes) {
-            if (this._rebuildingMenuRes[bridgeid] === false) {
-                return;
-            }
-        }
-
-        this._rebuildingMenu = false;
-        this._rebuildingMenuRes = {};
-
-        this._rebuildMenu(this._rebuildingMenuFirstTime);
-    }
-
-    /**
      * Rebuild the menu from scratch
      * 
      * @method _rebuildMenu
      * @private
-     * @param {Boolean} is this first time building the menu
      */
-    _rebuildMenu(firstTime = false) {
+    _rebuildMenu() {
 
-        Utils.logDebug("Rebuilding menu.");
+        super._rebuildMenu();
 
         let bridgeItems = [];
         let instanceCounter = 0;
         this._openMenuDefault = null;
-        this.refreshMenuObjects = {};
         this._syncSelectionDefault = {};
+        this._bridgesInMenuShowed = [];
+        this._lastOpenedMenu = {"last": null, "opening": null};
 
-        this.disconnectSignals(false, true);
+        this.checkAvailability(this.hue.bridges, true);
 
-        let oldItems = this.menu._getMenuItems();
-        for (let item in oldItems){
-            oldItems[item].destroy();
-        }
+        Utils.logDebug("Rebuilding bridge menu.");
 
         this._bridgesInMenu = this.getBridgesInMenu(this._bridgesInMenu);
 
@@ -5028,13 +5118,21 @@ var PhueMenu = GObject.registerClass({
                 continue;
             }
 
+            if (this._associatedConnection[bridgeid] !== undefined &&
+                this._associatedConnection[bridgeid]["connections"].length > 0 &&
+                ! this.deviceShouldBeAvailable[bridgeid]) {
+
+                Utils.logDebug(`Bridge ${bridgeid} is available but it prefers another network.`);
+                continue;
+            }
+
             if (instanceCounter > 0) {
                 this.menu.addMenuItem(
                     new PopupMenu.PopupSeparatorMenuItem()
                 );
             }
 
-            this.entertainmentInit(bridgeid, firstTime);
+            this.entertainmentInit(bridgeid, this._rebuildingMenuFirstTime);
 
             if (!this._compactMenu) {
                 bridgeItems = this._createMenuBridge(bridgeid);
@@ -5050,6 +5148,7 @@ var PhueMenu = GObject.registerClass({
 
             if (bridgeItems.length > 0) {
                 instanceCounter++;
+                this._bridgesInMenuShowed.push(bridgeid);
             }
         }
 
@@ -5057,6 +5156,9 @@ var PhueMenu = GObject.registerClass({
             for (let settingsItem of this._createSettingItems(true)) {
                 this.menu.addMenuItem(settingsItem);
             }
+        } else {
+            /* if any device is available, show the icon */
+            this.visible = true;
         }
 
         Main.wm.removeKeybinding("sync-selection");
@@ -5073,8 +5175,8 @@ var PhueMenu = GObject.registerClass({
                     );
                 } else {
                     Main.notify(
-                        _("Hue Lights - key shortcut: ") + this._syncSelectionKeyShortcut,
-                        _("Set the shortcut for sync ") + Utils.entertainmentModeText[Utils.entertainmentMode.SELECTION]
+                        "Hue Lights - " + this._("key shortcut") + ": "+ this._syncSelectionKeyShortcut,
+                        this._("Set the shortcut for sync") + " " + this._(Utils.entertainmentModeText[Utils.entertainmentMode.SELECTION])
                     );
                 }
             }
@@ -5108,7 +5210,7 @@ var PhueMenu = GObject.registerClass({
 
         let groupSelector = new ModalSelector.ModalSelector({
             options: groupsForSelection,
-            label: _("Select an entertainment group:")
+            label: this._("Select an entertainment area:")
         });
         groupSelector.show();
         groupSelector.newPosition();
@@ -5140,8 +5242,8 @@ var PhueMenu = GObject.registerClass({
 
         if (Object.keys(bridgesInMenu).length === 0) {
             Main.notify(
-                _("Hue Lights - key shortcut: ") + this._syncSelectionKeyShortcut,
-                _("No bridge connected.")
+                "Hue Lights - " +this._("key shortcut") + ": "+ this._syncSelectionKeyShortcut,
+                this._("No bridge connected.")
             );
             return;
         }
@@ -5153,7 +5255,7 @@ var PhueMenu = GObject.registerClass({
 
         let bridgeSelector = new ModalSelector.ModalSelector({
             options: bridgesInMenu,
-            label: _("Select a bridge:")
+            label: this._("Select a bridge:")
         });
         bridgeSelector.show();
         bridgeSelector.newPosition();
@@ -5193,56 +5295,6 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
-     * Check and change indicator position in menu.
-     * 
-     * @method setPositionInPanel
-     * @param {Enum} new position in panel
-     */
-    setPositionInPanel(position) {
-
-        let children = null;
-
-        if (this._indicatorPositionBackUp === this._indicatorPosition) {
-            return;
-        }
-
-        this.get_parent().remove_actor(this);
-
-        switch (this._indicatorPosition) {
-
-            case PhueMenuPosition.LEFT:
-
-                children = Main.panel._leftBox.get_children();
-                Main.panel._leftBox.insert_child_at_index(
-                    this,
-                    children.length
-                );
-                break;
-
-            case PhueMenuPosition.CENTER:
-
-                children = Main.panel._centerBox.get_children();
-                Main.panel._centerBox.insert_child_at_index(
-                    this,
-                    children.length
-                    );
-                break;
-
-            case PhueMenuPosition.RIGHT:
-
-                children = Main.panel._rightBox.get_children();
-                Main.panel._rightBox.insert_child_at_index(this, 0);
-                break;
-
-            default:
-                children = Main.panel._rightBox.get_children();
-                Main.panel._rightBox.insert_child_at_index(this, 0);
-        }
-
-        this._indicatorPositionBackUp = this._indicatorPosition;
-    }
-
-    /**
      * Backup light settings from requested bridge
      * before running notification
      * 
@@ -5268,16 +5320,21 @@ var PhueMenu = GObject.registerClass({
 
             cmd = {"transitiontime": 0};
 
-            cmd["on"] = lightState["on"];
+            /* if the light is off then only turn off otherwise it would blink */
+            if (lightState["on"]) {
+                cmd["on"] = lightState["on"];
 
-            cmd["bri"] = lightState["bri"];
+                cmd["bri"] = lightState["bri"];
 
-            if (lightState["colormode"] == "ct") {
-                cmd["ct"] = lightState["ct"];
-            }
+                if (lightState["colormode"] == "ct" && lightState["ct"] !== undefined) {
+                    cmd["ct"] = lightState["ct"];
+                }
 
-            if (lightState["colormode"] == "xy") {
-                cmd["xy"] = lightState["xy"];
+                if (lightState["colormode"] == "xy" && lightState["xy"] !== undefined) {
+                    cmd["xy"] = lightState["xy"];
+                }
+            } else {
+                cmd["on"] = false;
             }
 
             this.oldNotifylight[reqBridgeid][i] = cmd;
@@ -5287,12 +5344,49 @@ var PhueMenu = GObject.registerClass({
     }
 
     /**
+     * Check if notify light is sutible for this notification
+     * (messagetitle and body is checked).
+     * 
+     * @method notifyCheckRegex
+     * @param {Object} data of checked notify light
+     * @param {String} notification message title
+     * @param {String} notification message body
+     */
+    notifyCheckRegex(notifyData, title, body) {
+        let regex = ".*";
+        for (let key in notifyData) {
+            switch (notifyData[key]) {
+                case Utils.NOTIFY_LIGHTS_LABEL:
+                    break;
+                case Utils.NOTIFY_LIGHTS_REGEX_TITLE:
+                    regex = `${key.split("::")[1]}`;
+                    if (! title.match(regex)) {
+                        return false;
+                    }
+                    break;
+                case Utils.NOTIFY_LIGHTS_REGEX_BODY:
+                    regex = `${key.split("::")[1]}`;
+                    if (! body.match(regex)) {
+                        return false;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Start light notification on a bridge
      * 
      * @method startNotify
      * @param {String} requested bridge
+     * @param {String} notification message title
+     * @param {String} notification message body
      */
-    startNotify(reqBridgeid) {
+    startNotify(reqBridgeid, title, body) {
 
         Utils.logDebug(`Starting notify lights of bridge ${reqBridgeid}: ${JSON.stringify(this._notifyLights)}`);
 
@@ -5302,6 +5396,10 @@ var PhueMenu = GObject.registerClass({
             let lightid = parseInt(i.split("::")[1]);
 
             if (reqBridgeid !== bridgeid) {
+                continue;
+            }
+
+            if (!this.notifyCheckRegex(this._notifyLights[i], title, body)) {
                 continue;
             }
 
@@ -5377,14 +5475,22 @@ var PhueMenu = GObject.registerClass({
      * throught the getLights().
      * 
      * @method runNotify
+     * @param {String} notification message title
+     * @param {String} notification message body
      */
-    runNotify() {
-        Utils.logDebug("Notification happend in the system.");
+    runNotify(title, body) {
+        Utils.logDebug("A notification has occurred in the system.");
 
+        this._waitingNotificationMessage = {};
+    
         for (let bridgeid in this.hue.instances) {
             if (!this.hue.instances[bridgeid].isConnected()) {
                 continue;
             }
+
+            this._waitingNotificationMessage[bridgeid] = {};
+            this._waitingNotificationMessage[bridgeid]["title"] = title;
+            this._waitingNotificationMessage[bridgeid]["body"] = body;
 
             if (this._notificationQueues[bridgeid] === undefined) {
                 this._notificationQueues[bridgeid] = new Queue.Queue(Queue.handlerType.TIMED);
@@ -5396,7 +5502,7 @@ var PhueMenu = GObject.registerClass({
                 this._waitingNotification[bridgeid] = true;
                 this.hue.instances[bridgeid].getLights();
             } else {
-                this.queueNotify(bridgeid);
+                this.queueNotify(bridgeid, title, body);
             }
         }
     }
@@ -5406,9 +5512,10 @@ var PhueMenu = GObject.registerClass({
      * 
      * @method queueNotify
      * @param {String} bridge
+     * @param {String} notification message title
+     * @param {String} notification message body
      */
-    queueNotify(bridgeid){
-
+    queueNotify(bridgeid, title, body){
         if (this.oldNotifylight[bridgeid] === undefined ||
             Object.keys(this.oldNotifylight[bridgeid]).length === 0) {
 
@@ -5418,7 +5525,7 @@ var PhueMenu = GObject.registerClass({
 
         this._notificationQueues[bridgeid].append([
             () => {
-                this.startNotify(bridgeid);
+                this.startNotify(bridgeid, title, body);
             },
             100
         ]);
@@ -5429,5 +5536,25 @@ var PhueMenu = GObject.registerClass({
             },
             1000
         ]);
+    }
+
+    /**
+     * Remove timers created by GLib.timeout_add
+     * 
+     * @method disarmTimers
+     */
+    disarmTimers() {
+        super.disarmTimers()
+
+        for (let bridgeid in this.hue.instances) {
+            if (this._notificationQueues[bridgeid] !== undefined) {
+                this._notificationQueues[bridgeid].disarmTimers();
+            }
+
+            if (this._isStreaming[bridgeid] !== undefined &&
+                this._isStreaming[bridgeid]["entertainment"] !== undefined) {
+                    this._isStreaming[bridgeid]["entertainment"].disarmTimers();
+                }
+        }
     }
 });

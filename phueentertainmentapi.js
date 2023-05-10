@@ -5,14 +5,14 @@
  * JavaScript library for Philips Hue Entertainment API.
  *
  * @author Václav Chlumský
- * @copyright Copyright 2021, Václav Chlumský.
+ * @copyright Copyright 2022, Václav Chlumský.
  */
 
  /**
  * @license
  * The MIT License (MIT)
  *
- * Copyright (c) 2021 Václav Chlumský
+ * Copyright (c) 2022 Václav Chlumský
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -42,6 +42,10 @@ const GObject = imports.gi.GObject;
 const ByteArray = imports.byteArray;
 const DTLSClient = Me.imports.dtlsclient;
 const PhueScreenshot = Me.imports.phuescreenshot;
+const Utils = Me.imports.utils;
+
+const Gettext = imports.gettext.domain('hue-lights');
+const __ = Gettext.gettext;
 
 const LightRectangle = {
     WIDTH: 0.3,
@@ -49,7 +53,7 @@ const LightRectangle = {
 }
 
 /**
- * PhueEntertainment class. Provides Entertainment api to Philips hue bridge
+ * PhueEntertainment class. Provides Entertainment api to Philips Hue bridge
  * 
  * @class PhueMenu
  * @constructor
@@ -77,15 +81,23 @@ var PhueEntertainment =  GObject.registerClass({
     _init(props={}) {
         super._init(props);
 
-        let signal;
+        this._ = Utils.checkGettextEnglish(__);
 
-        this.gradient = false;
+        let signal;
+        this._timers = [];
+        this.gid = "";
+        this.gradient = -1;
         this.intensity = 40;
         this.brightness = 0xFF;
 
         this._signals = {};
 
-        this.dtls = new DTLSClient.DTLSClient({ip: this._ip, port: 2100, pskidentity: this._username, psk: this._clientkey});
+        this.dtls = new DTLSClient.DTLSClient({
+            ip: this._ip,
+            port: 2100,
+            pskidentity: this._username,
+            psk: this._clientkey
+        });
         signal = this.dtls.connect("connected", () => {
             this.emit("connected");
         });
@@ -118,6 +130,16 @@ var PhueEntertainment =  GObject.registerClass({
 
     get clientkey() {
         return this._clientkey;
+    }
+
+    /**
+     * Set the gid of a group
+     * 
+     * @method setGID
+     * @param {String} gid
+     */
+    setGID(gid) {
+        this.gid = gid;
     }
 
     /**
@@ -181,8 +203,32 @@ var PhueEntertainment =  GObject.registerClass({
      */
     _createLightHeader(headerType) {
         let header = [];
-        header = [0x48, 0x75, 0x65, 0x53, 0x74, 0x72, 0x65, 0x61, 0x6d]; /* HueStream */
+        header = Utils.string2Hex("HueStream");  /* HueStream */
         header = header.concat([0x01, 0x00]); /* version 1.0 */
+        header = header.concat([0x00]); /* sequence number - currently ignored by the bridge */
+        header = header.concat([0x00, 0x00]); /* reserved */
+        if (headerType === "color") {
+            header = header.concat([0x00]); /* color mode RGB */
+        } else {
+            header = header.concat([0x01]); /* brightness mode */
+        }
+        header = header.concat([0x00]); /* reserved */
+
+        return header;
+    }
+
+    /**
+     * Creates header version2 of light used in dtls data
+     * for controlling the lights
+     * 
+     * @method _createLightHeader2
+     * @param {String} "color" or "brightness" mode
+     * @return {Object} header - needs concat light data
+     */
+    _createLightHeader2(headerType) {
+        let header = [];
+        header = Utils.string2Hex("HueStream"); /* HueStream */
+        header = header.concat([0x02, 0x00]); /* version 2.0 */
         header = header.concat([0x00]); /* sequence number - currently ignored by the bridge */
         header = header.concat([0x00, 0x00]); /* reserved */
         if (headerType === "color") {
@@ -221,9 +267,15 @@ var PhueEntertainment =  GObject.registerClass({
                 lightsArray = lightsArray.concat(DTLSClient.uintToArray(b, 8));
             }
 
-            if (this.gradient) {
-                for (let i = 0; i < 7; i++) {
-                    lightsArray = lightsArray.concat([0x01, 0x00, i]);
+            this.dtls.sendEncrypted(lightsArray);
+
+            if (this.gradient >= 0) {
+                lightsArray = this._createLightHeader2("color");
+
+                lightsArray = lightsArray.concat(Utils.string2Hex(this.gid));
+
+                for (let i = this.gradient; i < 7 + this.gradient; i++) {
+                    lightsArray = lightsArray.concat([i]);
 
                     let r = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/255));
                     let g = Math.round(DTLSClient.getRandomInt(0xFF) * (this.brightness/255));
@@ -236,9 +288,10 @@ var PhueEntertainment =  GObject.registerClass({
                     lightsArray = lightsArray.concat(DTLSClient.uintToArray(b, 8));
                     lightsArray = lightsArray.concat(DTLSClient.uintToArray(b, 8));
                 }
+
+                this.dtls.sendEncrypted(lightsArray);
             }
 
-            this.dtls.sendEncrypted(lightsArray);
             resolve();
         });
     }
@@ -259,9 +312,11 @@ var PhueEntertainment =  GObject.registerClass({
 
         await this.promisRandom();
 
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, this.intensity, () => {
+        let timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, this.intensity, () => {
             this.doRandom();
+            this._timers = Utils.removeFromArray(this._timers, timerId);
         });
+        this._timers.push(timerId);
     }
 
     /**
@@ -304,9 +359,17 @@ var PhueEntertainment =  GObject.registerClass({
             lightsArray = lightsArray.concat(DTLSClient.uintToArray(b, 8));
         }
 
-        if (this.gradient) {
-            for (let i = 0; i < 7; i++) {
-                lightsArray = lightsArray.concat([0x01, 0x00, i]);
+        if (this.lights.length > 0) {
+            this.dtls.sendEncrypted(lightsArray);
+        }
+
+        if (this.gradient >= 0) {
+            lightsArray = this._createLightHeader2("color");
+
+            lightsArray = lightsArray.concat(Utils.string2Hex(this.gid));
+
+            for (let i = this.gradient; i < 7 + this.gradient; i++) {
+                lightsArray = lightsArray.concat([i]);
 
                 lightsArray = lightsArray.concat(DTLSClient.uintToArray(r, 8));
                 lightsArray = lightsArray.concat(DTLSClient.uintToArray(r, 8));
@@ -315,13 +378,15 @@ var PhueEntertainment =  GObject.registerClass({
                 lightsArray = lightsArray.concat(DTLSClient.uintToArray(b, 8));
                 lightsArray = lightsArray.concat(DTLSClient.uintToArray(b, 8));
             }
+
+            this.dtls.sendEncrypted(lightsArray);
         }
 
-        this.dtls.sendEncrypted(lightsArray);
-
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, this.intensity, () => {
+        let timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, this.intensity, () => {
             this.doCursorColor();
+            this._timers = Utils.removeFromArray(this._timers, timerId);
         });
+        this._timers.push(timerId);
     }
 
     /**
@@ -453,9 +518,17 @@ var PhueEntertainment =  GObject.registerClass({
 
         }
 
-        if (this.gradient) {
-            for (let i = 0; i < 7; i++) {
-                [widthRectangle, roomRectangle, heightRectangle] = this.gradientRectangles[i];
+        if (this.lights.length > 0) {
+            this.dtls.sendEncrypted(lightsArray);
+        }
+
+        if (this.gradient >= 0) {
+            lightsArray = this._createLightHeader2("color");
+
+            lightsArray = lightsArray.concat(Utils.string2Hex(this.gid));
+
+            for (let i = this.gradient; i < 7 + this.gradient; i++) {
+                [widthRectangle, roomRectangle, heightRectangle] = this.gradientRectangles[i - this.gradient];
 
                 x = widthRectangle[0] + (widthRectangle[1] - widthRectangle[0]) / 2;
                 y = heightRectangle[0] + (heightRectangle[1] - heightRectangle[0]) / 2;
@@ -480,7 +553,7 @@ var PhueEntertainment =  GObject.registerClass({
                 g = Math.round(green * (this.brightness/255));
                 b = Math.round(blue * (this.brightness/255));
 
-                lightsArray = lightsArray.concat([0x01, 0x00, i]);
+                lightsArray = lightsArray.concat([i]);
 
                 lightsArray = lightsArray.concat(DTLSClient.uintToArray(r, 8));
                 lightsArray = lightsArray.concat(DTLSClient.uintToArray(r, 8));
@@ -489,13 +562,15 @@ var PhueEntertainment =  GObject.registerClass({
                 lightsArray = lightsArray.concat(DTLSClient.uintToArray(b, 8));
                 lightsArray = lightsArray.concat(DTLSClient.uintToArray(b, 8));
             }
+
+            this.dtls.sendEncrypted(lightsArray);
         }
 
-        this.dtls.sendEncrypted(lightsArray);
-
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, this.intensity, () => {
+        let timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, this.intensity, () => {
             this.doSyncSreen(screenRectangle);
+            this._timers = Utils.removeFromArray(this._timers, timerId);
         });
+        this._timers.push(timerId);
     }
 
     /**
@@ -586,7 +661,7 @@ var PhueEntertainment =  GObject.registerClass({
      * @method startRandom
      * @param {Array} lights to by synchronized
      * @param {Array} relative locations of lights
-     * @param {Boolean} Is the gradient light strip in the group?
+     * @param {Number} index of the gradient light strip in the group
      */
     startRandom(lights, lightsLocations, gradient) {
         if (this._doStreaming) {
@@ -618,7 +693,7 @@ var PhueEntertainment =  GObject.registerClass({
      * @method startCursorColor
      * @param {Array} lights to by synchronized
      * @param {Array} relative locations of lights
-     * @param {Boolean} Is the gradient light strip in the group?
+     * @param {Number} index of the gradient light strip in the group
      */
     startCursorColor(lights, lightsLocations, gradient) {
         if (this._doStreaming) {
@@ -650,7 +725,7 @@ var PhueEntertainment =  GObject.registerClass({
      * @method startSyncScreen
      * @param {Array} lights to by synchronized
      * @param {Array} relative locations of lights
-     * @param {Boolean} Is the gradient light strip in the group?
+     * @param {Number} index of the gradient light strip in the group
      */
     startSyncScreen(screenRectangle, lights, lightsLocations, gradient) {
         if (this._doStreaming) {
@@ -665,8 +740,8 @@ var PhueEntertainment =  GObject.registerClass({
 
         if (screenRectangle === undefined && !this.checkSyncSuitableResolution()) {
             Main.notify(
-                _("Hue Lights - Sync screen"),
-                _("Your screen is not a solid rectangle.")
+                "Hue Lights - " + this._("Screen synchronization"),
+                this._("Your screen is not a solid rectangle.")
             );
             this.closeBridge();
             return;
@@ -708,7 +783,7 @@ var PhueEntertainment =  GObject.registerClass({
         }
 
         this.gradientRectangles = [];
-        if (this.gradient) {
+        if (this.gradient >= 0) {
             this.gradientRectangles.push(this.getRectangleOfLight(
                 startX,
                 startY,
@@ -776,5 +851,20 @@ var PhueEntertainment =  GObject.registerClass({
      */
     stopStreaming() {
         this._doStreaming = false;
+    }
+
+    /**
+     * Remove timers created by GLib.timeout_add
+     * 
+     * @method disarmTimers
+     */
+    disarmTimers() {
+        for (let t of this._timers) {
+            if (t) {
+                GLib.Source.remove(t);
+            }
+        }
+
+        this._timers = [];
     }
 })

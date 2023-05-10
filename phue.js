@@ -5,14 +5,14 @@
  * JavaScript library for Philips Hue bridges.
  *
  * @author Václav Chlumský
- * @copyright Copyright 2021, Václav Chlumský.
+ * @copyright Copyright 2022, Václav Chlumský.
  */
 
  /**
  * @license
  * The MIT License (MIT)
  *
- * Copyright (c) 2021 Václav Chlumský
+ * Copyright (c) 2022 Václav Chlumský
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -71,6 +71,11 @@ class _Phue {
         }
     }
 
+    /**
+     * Enable asynchronous requests for all bridges.
+     * 
+     * @method enableAsyncMode
+     */
     enableAsyncMode() {
         this._asyncMode = true;
         for (let i in this.instances) {
@@ -78,6 +83,11 @@ class _Phue {
         }
     }
 
+    /**
+     * Disable asynchronous requests for all bridges.
+     * 
+     * @method disableAsyncMode
+     */
     disableAsyncMode() {
         this._asyncMode = false;
 
@@ -107,7 +117,7 @@ class _Phue {
 
         if (this.instances[bridgeid].checkError()) {
 
-            Utils.logDebug(`Bridge ${bridgeid} check failed.`);
+            Utils.logError(`Bridge ${bridgeid} check failed.`);
             return;
         }
 

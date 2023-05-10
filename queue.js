@@ -7,14 +7,14 @@
  * https://gist.github.com/paolorossi/5747533
  *
  * @author Václav Chlumský
- * @copyright Copyright 2021, Václav Chlumský.
+ * @copyright Copyright 2022, Václav Chlumský.
  */
 
  /**
  * @license
  * The MIT License (MIT)
  *
- * Copyright (c) 2021 Václav Chlumský
+ * Copyright (c) 2022 Václav Chlumský
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -55,6 +55,7 @@ class _Queue {
 
     constructor(hType = handlerType.CUSTOM, handler = undefined) {
 
+        this._timers = [];
         this._queue = [];
 
         if (hType === handlerType.CUSTOM) {
@@ -103,11 +104,13 @@ class _Queue {
     }
 
     _delayTask(task, callback) {
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, task[1], () => {
+        let timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, task[1], () => {
             task[0]();
             callback();
+            this._timers = Utils.removeFromArray(this._timers, timerId);
             return GLib.SOURCE_REMOVE;
         });
+        this._timers.push(timerId);
     }
     /**
      * Predefined timed queue handler.
@@ -144,6 +147,21 @@ class _Queue {
      */
     getQueueLength() {
         return this._queue.length;
+    }
+
+    /**
+     * Remove timers created by GLib.timeout_add
+     * 
+     * @method disarmTimers
+     */
+    disarmTimers() {
+        for (let t of this._timers) {
+            if (t) {
+                GLib.Source.remove(t);
+            }
+        }
+
+        this._timers = [];
     }
 }
 

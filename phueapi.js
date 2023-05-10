@@ -5,14 +5,14 @@
  * JavaScript library for Philips Hue bridge.
  *
  * @author Václav Chlumský
- * @copyright Copyright 2021, Václav Chlumský.
+ * @copyright Copyright 2022, Václav Chlumský.
  */
 
  /**
  * @license
  * The MIT License (MIT)
  *
- * Copyright (c) 2021 Václav Chlumský
+ * Copyright (c) 2022 Václav Chlumský
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -41,6 +41,7 @@ const GObject = imports.gi.GObject;
 const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
 const Utils = Me.imports.utils;
+const Gio = imports.gi.Gio;
 
 /**
   * Check all bridges in the local network.
@@ -50,17 +51,18 @@ const Utils = Me.imports.utils;
   */
 function discoverBridges() {
 
+    if (Soup.MAJOR_VERSION >= 3) {
+        return discoverBridges3();
+    }
+
     let bridges = [];
     let session = Soup.Session.new();
-    session.set_property(Soup.SESSION_USER_AGENT, "hue-discovery");
-    session.set_property(Soup.SESSION_TIMEOUT, 3);
+    session.timeout = 3;
 
     let message = Soup.Message.new('GET', "https://discovery.meethue.com/");
     let statusCode = session.send_message(message);
 
     if (statusCode === Soup.Status.OK) {
-        session.set_property(Soup.SESSION_TIMEOUT, 1);
-
         let discovered = JSON.parse(message.response_body.data);
 
         for (let i in discovered) {
@@ -72,6 +74,61 @@ function discoverBridges() {
                 bridges.push(discovered[i]);
             }
         }
+    }
+
+    return bridges;
+}
+
+/**
+  * Check all bridges in the local network using libsoup3.
+  * 
+  * @method discoverBridges
+  * @return {Object} dictionary with bridges in local network
+  */
+function discoverBridges3() {
+    let bridges = [];
+    let session = Soup.Session.new();
+    session.timeout = 3;
+
+    let msg = Soup.Message.new('GET', "https://discovery.meethue.com/");
+
+    try {
+        let bytes = session.send_and_read(msg, null);
+
+        if (msg.status_code !== Soup.Status.OK) {
+            return [];
+        }
+
+        let data = ByteArray.toString(bytes.get_data());
+
+        let discovered = JSON.parse(data);
+
+        for (let i in discovered) {
+            msg = Soup.Message.new('GET', `http://${discovered[i]["internalipaddress"]}/api/config`);
+
+            let bridge = {};
+            try {
+                data = session.send_and_read(msg, null).get_data();
+
+                if (msg.status_code !== Soup.Status.OK) {
+                    continue;
+                }
+
+                bridge = JSON.parse(data);
+            } catch(e) {
+                bridge = {};
+                Utils.logError(`Failed to discover bridge ${discovered[i]["internalipaddress"]}: ${e}`);
+                continue;
+            }
+
+            if (bridge["mac"] !== undefined) {
+                bridges.push(discovered[i]);
+            }
+        }
+
+    } catch(e) {
+        Utils.logError(`Failed to discover bridges: ${e}`);
+        return [];
     }
 
     return bridges;
@@ -91,9 +148,21 @@ var PhueRequestype = {
     SENSORS_DATA: 10,
     RESOURCE_LINKS_DATA: 11,
     ENABLE_STREAM: 12,
-    NEW_USER: 13
+    NEW_USER: 13,
+    EVENT: 14
 };
 
+const TlsDatabaseBridge = GObject.registerClass({
+    Implements: [Gio.TlsFileDatabase],
+    Properties: {
+        'anchors': GObject.ParamSpec.override('anchors', Gio.TlsFileDatabase),
+    },
+}, class TlsDatabaseBridge extends Gio.TlsDatabase {
+
+    vfunc_verify_chain(chain, purpose, identity, interaction, flags, cancellable) {
+        return 0;
+    }
+});
 
 var PhueMessage = class PhueMessage extends Soup.Message {
 
@@ -135,13 +204,18 @@ var PhueBridge =  GObject.registerClass({
         "resource-links-data": {},
         "stream-enabled": {},
         "connection-problem": {},
+        "event-stream-data": {},
     }
 }, class PhueBridge extends GObject.Object {
 
     _init(props={}) {
+
         super._init(props);
         this._bridgeConnected = false;
         this._userName = "";
+
+        this._apiVersionMajor = 0;
+        this._apiVersionMinor = 0;
 
         this._data = [];
         this._bridgeData = [];
@@ -155,13 +229,17 @@ var PhueBridge =  GObject.registerClass({
         this._sensorsData = [];
         this._resourcelinksData = [];
         this._bridgeError = [];
+        this._eventStreamEnabled = false;
 
         this._baseUrl = `http://${this._ip}`;
         this._bridgeUrl = `${this._baseUrl}/api`;
+        this._eventStreamUrl = `https://${this._ip}/eventstream/clip/v2`;
 
         this._bridgeSession = Soup.Session.new();
-        this._bridgeSession.set_property(Soup.SESSION_USER_AGENT, "hue-session");
-        this._bridgeSession.set_property(Soup.SESSION_TIMEOUT, 1);
+        this._bridgeSession.timeout = 3;
+
+        this._eventStreamMsg = null;
+        this._eventStreamSession = null;
 
         this._asyncRequest = false;
     }
@@ -170,10 +248,11 @@ var PhueBridge =  GObject.registerClass({
         this._ip = value;
         this._baseUrl = `http://${this._ip}`;
         this._bridgeUrl = `${this._baseUrl}/api`;
+        this._eventStreamUrl = `https://${this._ip}/eventstream/clip/v2`;
     }
 
     get ip() {
-        this._ip;
+        return this._ip;
     }
 
     /**
@@ -184,7 +263,7 @@ var PhueBridge =  GObject.registerClass({
      */
     setConnectionTimeout(sec) {
 
-        this._bridgeSession.set_property(Soup.SESSION_TIMEOUT, sec);
+        this._bridgeSession.timeout = sec;
     }
 
     /**
@@ -291,16 +370,213 @@ var PhueBridge =  GObject.registerClass({
     }
 
     /**
+     * Checks bridge API version and enables suitable functions.
+     * 
+     * @method checkApiVersion
+     */
+    checkApiVersion() {
+        if (this._data !==  undefined &&
+            this._data["config"] !==  undefined &&
+            this._data["config"]["apiversion"] !==  undefined) {
+
+            let apiVersion = this._data["config"]["apiversion"].split(".");
+            this._apiVersionMajor = parseInt(apiVersion[0]);
+            this._apiVersionMinor = parseInt(apiVersion[1]);
+
+            if (this._apiVersionMajor >= 2 ||
+                (this._apiVersionMajor === 1 && this._apiVersionMinor >= 46)) {
+
+                this.enableEventStream();
+            }
+        }
+    }
+
+    /**
+     * Parse and emit result of bridge response.
+     *
+     * @method _responseJsonParse
+     * @private
+     * @param {String} method to be used like POST, PUT, GET
+     * @param {String} requested url
+     * @param {Object} request hue type
+     * @param {String} JSON response
+     */
+     _responseJsonParse(method, url, requestHueType, data) {
+        try {
+
+            Utils.logDebug(`Bridge ${method} async-responded OK to url: ${url}`);
+
+            try {
+                this._bridgeConnected = true;
+                this._data = JSON.parse(data);
+
+                this.checkApiVersion();
+            } catch {
+                Utils.logError(`Bridge ${method} async-respond, failed to parse JSON`);
+                this._data = [];
+            }
+
+            switch (requestHueType) {
+
+                case PhueRequestype.CHANGE_OCCURRED:
+                    this._bridgeData = this._data;
+                    this.emit("change-occurred");
+                    break;
+
+                case PhueRequestype.ALL_DATA:
+                    this._bridgeData = this._data;
+                    if (this._groupZeroData) {
+                        this._bridgeData["groups"][0] = this._groupZeroData;
+                    }
+                    this.emit("all-data");
+                    break;
+
+                case PhueRequestype.LIGHTS_DATA:
+                    this._lightsData = this._data;
+                    this.emit("lights-data");
+                    break;
+
+                case PhueRequestype.GROUPS_DATA:
+                    this._groupsData = this._data;
+                    this.emit("groups-data");
+                    break;
+
+                case PhueRequestype.GROUPZERO_DATA:
+                    this._groupZeroData = this._data;
+                    this.emit("group-zero-data");
+                    break;
+
+                case PhueRequestype.CONFIG_DATA:
+                    this._configData = this._data;
+                    this.emit("config-data");
+                    break;
+
+                case PhueRequestype.SCHEDULES_DATA:
+                    this._schedulesData = this._data;
+                    this.emit("schedules-data");
+                    break;
+
+                case PhueRequestype.SCENES_DATA:
+                    this._scenesData = this._data;
+                    this.emit("scenes-data");
+                    break;
+
+                case PhueRequestype.RULES_DATA:
+                    this._rulesData = this._data;
+                    this.emit("rules-data");
+                    break;
+
+                case PhueRequestype.SENSORS_DATA:
+                    this._sensorsData = this._data;
+                    this.emit("sensors-data");
+                    break;
+
+                case PhueRequestype.RESOURCE_LINKS_DATA:
+                    this._resourcelinksData = this._data;
+                    this.emit("resource-links-data");
+                    break;
+
+                case PhueRequestype.ENABLE_STREAM:
+                    this.emit("stream-enabled");
+                    break;
+
+                case PhueRequestype.NO_RESPONSE_NEED:
+                    /* no signal emitted, request does not need response */
+                    break;
+
+                default:
+            }
+
+            return
+
+        } catch {
+            this._connectionProblem(requestHueType);
+        }
+    }
+
+    /**
+     * Process url request to the bridge with libsoup3.
+     * 
+     * @method _requestJson3
+     * @private
+     * @param {String} method to be used like POST, PUT, GET
+     * @param {String} url to be requested
+     * @param {Object} request hue type
+     * @param {Object} JSON input data in case of supported method
+     * @return {Object} JSON with response
+     */
+    _requestJson3(method, url, requestHueType, data) {
+
+        let outputData;
+
+        Utils.logDebug(`Bridge ${method} request, url: ${url} data: ${JSON.stringify(data)}`);
+
+        let msg = PhueMessage.new(method, url);
+
+        msg.requestHueType = requestHueType;
+
+        if (data !== null) {
+            msg.set_request_body_from_bytes(
+                "application/json",
+                new GLib.Bytes(JSON.stringify(data))
+            );
+        }
+
+        if (this._asyncRequest) {
+            this._data = [];
+            this._bridgeSession.send_and_read_async(msg, Soup.MessagePriority.NORMAL, null, (sess, res) => {
+                if (msg.get_status() === Soup.Status.OK) {
+                    try {
+                        const bytes = this._bridgeSession.send_and_read_finish(res);
+                        let responseData = ByteArray.toString(bytes.get_data());
+                        this._responseJsonParse(method, url, requestHueType, responseData);
+                    } catch {
+                        this._connectionProblem(requestHueType);
+                    }
+                } else {
+                    this._connectionProblem(requestHueType);
+                }
+            });
+
+            return [];
+        }
+
+        try {
+            outputData = this._bridgeSession.send_and_read(msg, null).get_data();
+
+            if (msg.status_code !== Soup.Status.OK) {
+                Utils.logDebug(`Bridge sync-respond to ${url} ended with status: ${msg.status_code}`);
+                this._bridgeConnected = false;
+                return [];
+            }
+
+            this._data = JSON.parse(outputData);
+            this._bridgeConnected = true;
+        } catch(e) {
+            Utils.logError(`Bridge sync-respond to ${url} failed: ${e}`);
+            this._bridgeConnected = false;
+            return [];
+        }
+
+        return this._data;
+    }
+
+    /**
      * Process url request to the bridge.
      * 
      * @method _requestJson
      * @private
      * @param {String} method to be used like POST, PUT, GET
-     * @param {Boolean} url to be requested
-     * @param {Object} input data in case of supported method
+     * @param {String} url to be requested
+     * @param {Object} request hue type
+     * @param {Object} JSON input data in case of supported method
      * @return {Object} JSON with response
      */
     _requestJson(method, url, requestHueType, data) {
+
+        if (Soup.MAJOR_VERSION >= 3) {
+            return this._requestJson3(method, url, requestHueType, data);
+        }
 
         Utils.logDebug(`Bridge ${method} request, url: ${url} data: ${JSON.stringify(data)}`);
 
@@ -320,104 +596,9 @@ var PhueBridge =  GObject.registerClass({
 
             this._bridgeSession.queue_message(msg, (sess, mess) => {
                 if (mess.status_code === Soup.Status.OK) {
-                    try {
-
-                        Utils.logDebug(`Bridge ${method} async-responded OK to url: ${url}`);
-
-                        try {
-                            this._bridgeConnected = true;
-                            this._data = JSON.parse(mess.response_body.data);
-                        } catch {
-                            Utils.logDebug(`Bridge ${method} async-respond, failed to parse JSON`);
-                            this._data = [];
-                        }
-
-                        switch (mess.requestHueType) {
-
-                            case PhueRequestype.CHANGE_OCCURRED:
-                                this._bridgeData = this._data;
-                                this.emit("change-occurred");
-                                break;
-
-                            case PhueRequestype.ALL_DATA:
-                                this._bridgeData = this._data;
-                                if (this._groupZeroData) {
-                                    this._bridgeData["groups"][0] = this._groupZeroData;
-                                }
-                                this.emit("all-data");
-                                break;
-
-                            case PhueRequestype.LIGHTS_DATA:
-                                this._lightsData = this._data;
-                                this.emit("lights-data");
-                                break;
-
-                            case PhueRequestype.GROUPS_DATA:
-                                this._groupsData = this._data;
-                                this.emit("groups-data");
-                                break;
-
-                            case PhueRequestype.GROUPZERO_DATA:
-                                this._groupZeroData = this._data;
-                                this.emit("group-zero-data");
-                                break;
-
-                            case PhueRequestype.CONFIG_DATA:
-                                this._configData = this._data;
-                                this.emit("config-data");
-                                break;
-
-                            case PhueRequestype.SCHEDULES_DATA:
-                                this._schedulesData = this._data;
-                                this.emit("schedules-data");
-                                break;
-
-                            case PhueRequestype.SCENES_DATA:
-                                this._scenesData = this._data;
-                                this.emit("scenes-data");
-                                break;
-
-                            case PhueRequestype.RULES_DATA:
-                                this._rulesData = this._data;
-                                this.emit("rules-data");
-                                break;
-
-                            case PhueRequestype.SENSORS_DATA:
-                                this._sensorsData = this._data;
-                                this.emit("sensors-data");
-                                break;
-
-                            case PhueRequestype.RESOURCE_LINKS_DATA:
-                                this._resourcelinksData = this._data;
-                                this.emit("resource-links-data");
-                                break;
-
-                            case PhueRequestype.ENABLE_STREAM:
-                                this.emit("stream-enabled");
-                                break;
-
-                            case PhueRequestype.NO_RESPONSE_NEED:
-                                /* no signal emitted, request does not need response */
-                                break;
-
-                            default:
-                        }
-
-                        return
-
-                    } catch {
-                        this._bridgeConnected = false;
-                        this._data = [];
-                        if (requestHueType !== PhueRequestype.NO_RESPONSE_NEED) {
-                            this.emit("connection-problem");
-                        }
-                    }
+                    this._responseJsonParse(method, url, requestHueType, mess.response_body.data);
                 } else {
-                    this._bridgeConnected = false;
-                    this._data = [];
-                    if (requestHueType !== PhueRequestype.NO_RESPONSE_NEED) {
-                        this.emit("connection-problem");
-                    }
+                    this._connectionProblem(requestHueType);
                 }
             });
 
@@ -433,13 +614,12 @@ var PhueBridge =  GObject.registerClass({
                 this._bridgeConnected = true;
                 this._data = JSON.parse(msg.response_body.data);
             } catch {
-                Utils.logDebug(`Bridge ${method} sync-respond, failed to parse JSON`);
+                Utils.logError(`Bridge ${method} sync-respond, failed to parse JSON`);
                 return [];
             }
         }
 
         return this._data;
-
     }
 
     /**
@@ -514,7 +694,7 @@ var PhueBridge =  GObject.registerClass({
             let apiVersion = res["apiversion"].split(".");
             let major = parseInt(apiVersion[0]);
             let minor = parseInt(apiVersion[1]);
-            if (major >= 1 && minor >= 22) {
+            if (major >= 2 || (major === 1 && minor >= 22)) {
                 generateClientKey = true;
             }
         }
@@ -524,7 +704,7 @@ var PhueBridge =  GObject.registerClass({
             hostname = ByteArray.toString(output[1]).trim();
         } catch(e) {
             hostname = "unknown-host";
-            Utils.logDebug(`Failed to get hostanme: ${e}`);
+            Utils.logError(`Failed to get hostanme: ${e}`);
         }
 
         /* device name can be up to 19 chars */
@@ -931,5 +1111,210 @@ var PhueBridge =  GObject.registerClass({
         }
 
         return res;
+    }
+
+    /**
+     * Sends request to read event stream of the bridge.
+     * 
+     * @method _requestEventStream
+     * @private
+     */
+    _requestEventStream() {
+        if (! this._eventStreamEnabled) {
+            Utils.logDebug(`Event stream ${this._eventStreamUrl} not enabled`);
+            return;
+        }
+
+        if (this._eventStreamSession === null) {
+            this._eventStreamEnabled = false;
+            this.enableEventStream();
+        }
+
+        if (this._eventStreamMsg !== null) {
+            Utils.logDebug(`Event stream message already requested on: ${this._eventStreamUrl}`);
+            return;
+        }
+
+        Utils.logDebug(`Event stream ${this._eventStreamUrl} request`);
+
+        let msg = PhueMessage.new("GET", this._eventStreamUrl);
+
+        msg.requestHueType = PhueRequestype.EVENT;
+        msg.request_headers.append("ssl", "False");
+        msg.request_headers.append("hue-application-key", this._userName);
+
+        this._eventStreamMsg = msg;
+
+        if (Soup.MAJOR_VERSION >= 3) {
+            this._eventStreamSession.send_and_read_async(msg, Soup.MessagePriority.NORMAL, null, (sess, res) => {
+                switch (msg.get_status()) {
+                    case Soup.Status.NONE:
+                        Utils.logDebug(`Event stream ${this._eventStreamUrl} message none`);
+                        break;
+                    case Soup.Status.OK:
+                        const bytes = this._eventStreamSession.send_and_read_finish(res);
+                        let responseData = ByteArray.toString(bytes.get_data());
+
+                        this._eventStreamMsg = null;
+                        try {
+                            this._eventStreamData = JSON.parse(responseData);
+
+                            this.emit("event-stream-data");
+                        } catch {
+                            Utils.logError(`Event stream ${this._eventStreamUrl} data problem - failed to parse JSON`);
+                            this._eventStreamData = [];
+                        }
+
+                        this._requestEventStream();
+                        break;
+
+                    case Soup.Status.CANCELLED:
+                        /* event stream already disabled - this is what left from the msg, do nothing*/
+                        Utils.logDebug(`Event stream ${this._eventStreamUrl} cancelled`);
+                        return;
+                        break;
+
+                    default:
+                        this._eventStreamMsg = null;
+                        Utils.logDebug(`Event stream ${this._eventStreamUrl} stopped due to error code: ${msg.get_status()}: ${msg.get_reason_phrase()}`);
+                        this._eventStreamData = [];
+                        break;
+                }
+            });
+        } else {
+            this._eventStreamSession.queue_message(msg, (sess, mess) => {
+                switch(mess.status_code) {
+                    case Soup.Status.OK:
+                        this._eventStreamMsg = null;
+                        try {
+                            this._eventStreamData = JSON.parse(mess.response_body.data);
+
+                            this.emit("event-stream-data");
+                        } catch {
+                            Utils.logError(`Event stream ${this._eventStreamUrl} data problem - failed to parse JSON`);
+                            this._eventStreamData = [];
+                        }
+
+                        this._requestEventStream();
+                        break;
+
+                    case Soup.Status.CANCELLED:
+                        /* event stream already disabled - this is what left from the msg, do nothing*/
+                        Utils.logDebug(`Event stream ${this._eventStreamUrl} cancelled`);
+                        return;
+                        break;
+
+                    default:
+                        this._eventStreamMsg = null;
+                        Utils.logDebug(`Event stream ${this._eventStreamUrl} stopped due to error code: ${mess.status_code}`);
+                        this._eventStreamData = [];
+                        break;
+                }
+            })
+        }
+    }
+
+    /**
+     * Enables event stream and sends the request to read it.
+     * 
+     * @method enableEventStream
+     */
+    enableEventStream() {
+        if (this._userName === "") {
+            return;
+        }
+
+        if (this._eventStreamEnabled) {
+            return;
+        }
+
+        Utils.logDebug(`Enabling event stream on: ${this._eventStreamUrl}`);
+
+        if (this._eventStreamSession === null) {
+            this._eventStreamSession = Soup.Session.new();
+
+            if (Soup.MAJOR_VERSION >= 3) {
+                let tlsDatabase =  new TlsDatabaseBridge();
+                this._eventStreamSession.tls_database  = tlsDatabase;
+            } else {
+                this._eventStreamSession.ssl_strict = false;
+            }
+        }
+
+        this._eventStreamSession.timeout = 0;
+        this._eventStreamEnabled = true;
+
+        this._requestEventStream();
+    }
+
+    /**
+     * Disable event stream and let current request timeout.
+     * 
+     * @method disableEventStream
+     */
+    disableEventStream() {
+        if (this._userName === "") {
+            return;
+        }
+
+        if (!this._eventStreamEnabled) {
+            return;
+        }
+
+        if (this._eventStreamSession === null) {
+            return;
+        }
+
+        Utils.logDebug(`Disabling event stream on: ${this._eventStreamUrl}`);
+
+        this._eventStreamEnabled = false;
+
+        if (this._eventStreamMsg !== null) {
+            this._eventStreamSession.timeout = 1;
+            if (Soup.MAJOR_VERSION < 3) {
+                this._eventStreamSession.cancel_message(this._eventStreamMsg, Soup.Status.CANCELLED);
+            }
+        }
+
+        this._eventStreamSession.abort();
+
+        this._eventStreamMsg = null;
+        this._eventStreamSession = null;
+    }
+
+    /**
+     * Returns event data in JSON.
+     * 
+     * @method getEvent
+     * @return {Object} JSON data
+     */
+    getEvent() {
+        return this._eventStreamData;
+    }
+
+    /**
+     * Check if event stream is running.
+     * 
+     * @method isEventStream
+     * @returns {Boolean}
+     */
+    isEventStream() {
+        return this._eventStreamEnabled;
+    }
+
+    /**
+     * Mark problem with connection and emit the situation.
+     *
+     * @method _connectionProblem
+     * @private
+     * @param {Object} request hue type
+     */
+    _connectionProblem(requestHueType) {
+        this._bridgeConnected = false;
+        this._data = [];
+        this.disableEventStream();
+        if (requestHueType !== PhueRequestype.NO_RESPONSE_NEED) {
+            this.emit("connection-problem");
+        }
     }
 })

@@ -5,14 +5,14 @@
  * JavaScript partial implementation of DTLS Client for Philips Hue Bridge.
  *
  * @author Václav Chlumský
- * @copyright Copyright 2021, Václav Chlumský.
+ * @copyright Copyright 2022, Václav Chlumský.
  */
 
  /**
  * @license
  * The MIT License (MIT)
  *
- * Copyright (c) 2021 Václav Chlumský
+ * Copyright (c) 2022 Václav Chlumský
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -273,7 +273,7 @@ var DTLSClient =  GObject.registerClass({
     }
 
     /**
-     * Connect to Philips hue bridge via DTLS using UDP
+     * Connect to Philips Hue bridge via DTLS using UDP
      * 
      * @method connectBridge
      */
@@ -292,7 +292,7 @@ var DTLSClient =  GObject.registerClass({
         this._clientSocket.connect_async(address, null, (o, res) =>  {
             this._connection = this._clientSocket.connect_finish(res);
             if (!this._connection) {
-                logError("hue not connected via dtls");
+                Utils.logError("DTLS connection to bridge not established.");
                 return;
             }
 
@@ -396,7 +396,12 @@ var DTLSClient =  GObject.registerClass({
             } catch (e) {
                 fillSize = 0;
 
-                Utils.logDebug(`DTLS client failed to finish reading: ${e}`);
+                if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.PENDING)) {
+                    Utils.logDebug(`DTLS client is already reading, skipping.`);
+                    return;
+                }
+
+                Utils.logError(`DTLS client failed to finish reading: ${e}`);
             }
 
             if (fillSize > 0) {
@@ -407,9 +412,11 @@ var DTLSClient =  GObject.registerClass({
                     msg.push(this._dataInputStream.read_byte(null));
                 }
 
-                let packet = this._readPacket(msg);
+                while(msg.length !== 0) {
+                    let packet = this._readPacket(msg);
 
-                this._handleResponse(packet);
+                    this._handleResponse(packet);
+                }
 
                 return;
             }
@@ -801,7 +808,7 @@ var DTLSClient =  GObject.registerClass({
         let bodyLength = arrayToUint(this.popNextN(msg, 2));
 
         if (this._encrypted) {
-            Utils.logDebug("decrypt messages not supported: " + JSON.stringify(packet));
+            Utils.logDebug("Decrypt messages not supported: " + JSON.stringify(packet));
             this._logDecryptionData("server", packet, msg);
             return packet;
         }
@@ -822,6 +829,11 @@ var DTLSClient =  GObject.registerClass({
                 let handshakeBody = this.popNextN(msg, handshakeBodyLength);
                 packet = Object.assign({}, packet, this._readHandshakePacket(handshakeBody, packet["hType"]));
                 break;
+
+            case contentType.CHANGE_CIPHER_SPEC:
+                /* read 0x01 */
+                if (arrayToUint(this.popNextN(msg, 1)) !== 0x01)
+                    Utils.logError("Invalid ChangeCipherSpec DTLS message.");
 
             default:
                 break;
@@ -1052,7 +1064,7 @@ var DTLSClient =  GObject.registerClass({
 
             encryptedMsg = encrypted.cipherText.concat(encrypted.authenticationTag);
         } catch (e) {
-                logError("hue encryption error: " + e);
+                Utils.logError("hue encryption error: " + e);
         }
 
         encryptedMsg = epochAndSeq.concat(encryptedMsg);

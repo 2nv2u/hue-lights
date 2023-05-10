@@ -5,14 +5,14 @@
  * JavaScript Gnome extension for Philips Hue lights and bridges.
  *
  * @author Václav Chlumský
- * @copyright Copyright 2021, Václav Chlumský.
+ * @copyright Copyright 2022, Václav Chlumský.
  */
 
  /**
  * @license
  * The MIT License (MIT)
  *
- * Copyright (c) 2021 Václav Chlumský
+ * Copyright (c) 2022 Václav Chlumský
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -36,11 +36,13 @@
 const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
 const HueMenu = Me.imports.extensionmenu;
+const HueSyncBox = Me.imports.syncboxmenu;
 const Utils = Me.imports.utils;
 const Main = imports.ui.main;
 const MessageTray = imports.ui.messageTray;
 
 var hueLightsMenu; /* main widget */
+var hueSyncBoxMenu; /* widget for sync boxes */
 
 let origCreateBanner;
 
@@ -53,7 +55,7 @@ function createBannerHue() {
 
     if (hueLightsMenu !== null) {
 
-        hueLightsMenu.runNotify();
+        hueLightsMenu.runNotify(this.title, this.bannerBodyText);
     }
 
     return this.source.createBanner(this);
@@ -67,8 +69,6 @@ function createBannerHue() {
 function init() {
 
     ExtensionUtils.initTranslations();
-
-    log(`initializing ${Me.metadata.name} version ${Me.metadata.version}`);
 }
 
 /**
@@ -82,10 +82,12 @@ function enable() {
 
     Main.panel.addToStatusArea('hue-lights', hueLightsMenu);
 
+    hueSyncBoxMenu = new HueSyncBox.PhueSyncBoxMenu();
+
+    Main.panel.addToStatusArea('hue-sync-box', hueSyncBoxMenu);
+
     origCreateBanner = MessageTray.Notification.prototype.createBanner;
     MessageTray.Notification.prototype.createBanner = createBannerHue;
-
-    log(`enabling ${Me.metadata.name} version ${Me.metadata.version}`);
 }
 
 /**
@@ -98,10 +100,15 @@ function disable() {
 
     MessageTray.Notification.prototype.createBanner = origCreateBanner;
 
+    hueSyncBoxMenu.disarmTimers();
+    hueSyncBoxMenu.disconnectSignals(true);
+    hueSyncBoxMenu.destroy();
+    hueSyncBoxMenu = null
+
+    hueLightsMenu.disarmTimers();
     hueLightsMenu.disableKeyShortcuts();
     hueLightsMenu.disableStreams();
     hueLightsMenu.disconnectSignals(true);
     hueLightsMenu.destroy();
-
-    log(`disabling ${Me.metadata.name} version ${Me.metadata.version}`);
+    hueLightsMenu = null
 }
