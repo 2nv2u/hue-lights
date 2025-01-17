@@ -1,3 +1,26 @@
+## Version 37
+ * fix switches toggling area
+## Version 36
+ * new motion sensor icons
+ * add Gnome 47 support
+## Version 35
+ * fix lights notification
+## Version 34
+ * add Gnome 46 support
+ * added Dutch translation
+ ## Version 33
+ * null runNotify in disable
+## Version 32
+ * fix replacing createBanner function for notifications
+ * improve use of pick_color
+ * miscellaneous fixes
+## Version 31
+ * porting to Gnome 45
+ * add sync audio feature
+ * add possibility to restart syncbox
+ * the only menu is now the compact menu
+ * add discovery devices using avahi (mDNS)
+ * change brightness with scroll wheel
 ## Version 30
  * fix black sliders when using color temperature
 ## Version 29
